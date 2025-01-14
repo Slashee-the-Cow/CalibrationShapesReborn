@@ -1,7 +1,9 @@
 name: "Update i18n template"
 
 on:
-  [push]
+  push:
+    paths:
+      - '**.py'
 
 jobs:
   update-pot:
