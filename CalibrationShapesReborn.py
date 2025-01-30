@@ -3,16 +3,22 @@
 # Reborn edition by Slashee the Cow 2025-
 
 # Version history (Reborn)
-# 1.0:    Initial release.
-#       - Rebranded
-#       - Removed towers and tests that require use of post-processing scripts - AutoTowers Generator does them so much better and asking the user to add a script is a pain.
-#       - Removed support for Cura versions below 5.0 to get rid of legacy code
+# 1.0.0:    Initial release.
+#       - Rebranded.
+#       - Removed towers and tests that require use of post-processing scripts
+#           AutoTowers Generator does them so much better and asking the user to add a script is a pain.
+#       - Removed support for Cura versions below 5.0 to get rid of legacy code.
+# 1.0.1:
+#       - Replaced "default size" settings box with something you wouldn't be afraid to take how to meet your parents for the first time.
+#       - This will have definitely broken the existing translations so they have been removed. If you're happy to help translate this, I'm happier to have you help!
+#       - Removed some more old, dead code.
+#       - Fixed a couple of typos in code that didn't affect functionality but bugged me.
+#       - Fixed a couple of typos in original code that would affect functionality.
 
     
 # Imports from the python standard library to build the plugin functionality
 import os
 import sys
-import re
 import math
 import numpy
 import trimesh
@@ -37,16 +43,12 @@ from UM.Operations.AddSceneNodeOperation import AddSceneNodeOperation
 from UM.Operations.RemoveSceneNodeOperation import RemoveSceneNodeOperation
 from UM.Operations.SetTransformOperation import SetTransformOperation
 
-from cura.CuraVersion import CuraVersion  # type: ignore
-from UM.Version import Version
-
 from UM.Logger import Logger
 from UM.Message import Message
 
 from UM.i18n import i18nCatalog
 
-from PyQt6.QtCore import QObject, pyqtProperty, pyqtSignal, pyqtSlot, QUrl
-from PyQt6.QtGui import QDesktopServices
+from PyQt6.QtCore import QObject, pyqtSlot, pyqtSignal, pyqtProperty
 
 i18n_cura_catalog = i18nCatalog("cura")
 i18n_catalog = i18nCatalog("fdmprinter.def.json")
@@ -59,56 +61,30 @@ Resources.addSearchPath(
     os.path.join(os.path.abspath(os.path.dirname(__file__)),'resources')
 )  # Plugin translation file import
 
-catalog = i18nCatalog("calibration")
+catalog = i18nCatalog("calibrationshapesreborn")
 
 if catalog.hasTranslationLoaded():
     Logger.log("i", "Calibration Shapes Reborn Plugin translation loaded!")
 
 #This class is the extension and doubles as QObject to manage the qml    
 class CalibrationShapesReborn(QObject, Extension):
-    #Create an api
-    from cura.CuraApplication import CuraApplication
-    api = CuraApplication.getInstance().getCuraAPI()
     
-    # The QT signal, which signals an update for user information text
-    userInfoTextChanged = pyqtSignal()
-    userSizeChanged = pyqtSignal()
     
     def __init__(self, parent = None) -> None:
-        QObject.__init__(self, parent)
-        Extension.__init__(self)
-        
+        super().__init__()
         
         # set the preferences to store the default value
         self._preferences = CuraApplication.getInstance().getPreferences()
-        self._preferences.addPreference("calibrationshapesreborn/size", 20)
-        
-        # convert as float to avoid further issue
-        self._size = float(self._preferences.getValue("calibrationshapesreborn/size"))       
- 
-        self.Major=1
-        self.Minor=0
+        self._preferences.addPreference("calibrationshapesreborn/shapesize", 20)
 
-        # Logger.log('d', "Info Version CuraVersion --> " + str(Version(CuraVersion)))
-        Logger.log('d', "Info CuraVersion --> " + str(CuraVersion))
-        
-        # Test version for Cura Master
-        # https://github.com/smartavionics/Cura
-        if "master" in CuraVersion :
-            self.Major=4
-            self.Minor=20
-        else:
-            try:
-                self.Major = int(CuraVersion.split(".")[0])
-                self.Minor = int(CuraVersion.split(".")[1])
-            except:
-                pass
- 
+        self._shape_size = float(self._preferences.getValue("calibrationshapesreborn/shapesize"))  
 
-        self._qml_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'qml', "CalibrationShapesReborn.qml")
+        self._settings_popup = None
+        
+        # self._settings_qml = os.path.join(os.path.dirname(os.path.abspath(__file__)), "qml", "settings.qml")
+        self._settings_qml = os.path.abspath(os.path.join(os.path.dirname(__file__), "qml", "settings.qml"))
         
         self._controller = CuraApplication.getInstance().getController()
-        self._message = None
         
         self.setMenuName(catalog.i18nc("@item:inmenu", "Calibration Shapes"))
         self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a cube"), self.addCube)
@@ -143,103 +119,33 @@ class CalibrationShapesReborn(QObject, Extension):
         self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a Bi-Color Calibration Cube"), self.addHollowCalibrationCube)
         self.addMenuItem(catalog.i18nc("@item:inmenu", "Add an Extruder Offset Calibration Part"), self.addExtruderOffsetCalibration)        
         self.addMenuItem("   ", lambda: None)
-        self.addMenuItem(catalog.i18nc("@item:inmenu", "Set default size"), self.defaultSize)
+        self.addMenuItem(catalog.i18nc("@item:inmenu", "Set default size"), self.showSettingsPopup)
+
   
-        #Initialize variables
-        self.userText = ""
-        self._continueDialog = None
-
-
-    # Define the default value pour the standard element
-    def defaultSize(self) -> None:
- 
-        if self._continueDialog is None:
-            self._continueDialog = self._createDialogue()
-        self._continueDialog.show()
-        #self.userSizeChanged.emit()
-
-    #====User Input=====================================================================================================
-    @pyqtProperty(str, notify= userSizeChanged)
-    def sizeInput(self):
-        return str(self._size)
-        
-    #The QT property, which is computed on demand from our userInfoText when the appropriate signal is emitted
-    @pyqtProperty(str, notify= userInfoTextChanged)
-    def userInfoText(self):
-        return self.userText
-
-    #This method builds the dialog from the qml file and registers this class
-    #as the manager variable
-    def _createDialogue(self):
-        #qml_file_path = os.path.join(PluginRegistry.getInstance().getPluginPath(self.getPluginId()), "CalibrationShapes.qml")
-        #Logger.log('d', 'Qml_path : ' + str(self._qml_path)) 
-        component_with_context = Application.getInstance().createQmlComponent(self._qml_path, {"manager": self})
-        return component_with_context
-
-    def getSize(self) -> float:
+    # Define the default value for the standard element
+    def showSettingsPopup(self):
+        if self._settings_popup is None:
+            self._createSettingsPopup()
+        self._settings_popup.show()
+            
+    def _createSettingsPopup(self):
+        #qml_file_path = os.path.join(os.path.dirname(__file__), "qml", "settings.qml")
+        self._settings_popup = CuraApplication.getInstance().createQmlComponent(self._settings_qml, {"manager": self})
     
-        return self._size
-        
-    # is called when a key gets released in the size inputField (twice for some reason)
-    @pyqtSlot(str)
-    def sizeEntered(self, text):
-        # Is the textfield empty ? Don't show a message then
-        if text =="":
-            #self.writeToLog("size-Textfield: Empty")
-            self.userMessage("", "ok")
-            return
+    _shape_size_changed = pyqtSignal()
+    
+    @pyqtSlot(int)
+    def SetShapeSize(self, value: int) -> None:
+        #Logger.log("d", f"Attempting to set ShapeSize from pyqtProperty: {value}")
+        self._preferences.setValue("calibrationshapesreborn/shapesize", value)
+        self._shape_size = value
+        self._shape_size_changed.emit()
 
-        #Convert commas to points
-        text = text.replace(",",".")
-
-        #self.writeToLog("Size-Textfield: read value "+text)
-
-        #Is the entered Text a number?
-        try:
-            float(text)
-        except ValueError:
-            self.userMessage(catalog.i18nc("@info:error", "Entered size invalid: ") + text,"wrong")
-            return
-        self._size = float(text)
-
-        #Check if positive
-        if self._size <= 0:
-            self.userMessage(catalog.i18nc("@info:error", "Size value must be positive !"),"wrong")
-            self._size = 20
-            return
-
-        self.writeToLog("Set calibrationshapesreborn/size printFromHeight to : " + text)
-        self._preferences.setValue("calibrationshapesreborn/size", self._size)
-        
-        #clear the message Field
-        self.userMessage("", "ok")
- 
-    #===== Text Output ===================================================================================================
-    #writes the message to the log, includes timestamp, length is fixed
-    def writeToLog(self, str):
-        Logger.log("d", "Debug Calibration Shapes Reborn = %s", str)
-
-    #Sends an user message to the Info Textfield, color depends on status (prioritized feedback)
-    # Red wrong for Errors and Warnings
-    # Grey for details and messages that aren't interesting for advanced users
-    def userMessage(self, message, status):
-        if status is "wrong":
-            #Red
-            self.userText = "<font color='#a00000'>" + message + "</font>"
-        else:
-            # Grey
-            if status is "ok":
-                self.userText = "<font color='#9fa4b0'>" + message + "</font>"
-            else:
-                self.writeToLog("Error: Invalid status: "+status)
-                return
-        #self.writeToLog("User Message: "+message)
-        self.userInfoTextChanged.emit()
+    @pyqtProperty(int, notify = _shape_size_changed)
+    def ShapeSize(self) -> int:
+        #Logger.log("d", f"ShapeSize pyqtProperty accessed: {self._shape_size}, cast to {int(self._shape_size)}")
+        return int(self._shape_size)
           
-    def gotoHelp(self) -> None:
-        QDesktopServices.openUrl(QUrl("https://github.com/Slashee-the-Cow/CalibrationShapesReborn"))
-
-
     def addBedLevelCalibration(self) -> None:
         # Get the build plate Size
         machine_manager = CuraApplication.getInstance().getMachineManager()        
@@ -296,13 +202,6 @@ class CalibrationShapesReborn(QObject, Extension):
         Message(catalog.i18nc("@info:status", "Please select one or more models first"))
 
         return []
- 
-    def _sliceableNodes(self):
-        # Add all sliceable scene nodes to check
-        scene = Application.getInstance().getController().getScene()
-        for node in DepthFirstIterator(scene.getRoot()):
-            if node.callDecoration("isSliceable"):
-                yield node
                        
     def addCalibrationCube(self) -> None:
         self._registerShapeStl("CalibrationCube")
@@ -384,24 +283,24 @@ class CalibrationShapesReborn(QObject, Extension):
     # xaxis = [1, 0, 0]
     # Rx = trimesh.transformations.rotation_matrix(math.radians(90), xaxis)    
     def addCube(self) -> None:
-        Tz = trimesh.transformations.translation_matrix([0, 0, self._size*0.5])
-        self._addShape("Cube",self._toMeshData(trimesh.creation.box(extents = [self._size, self._size, self._size], transform = Tz )))
+        Tz = trimesh.transformations.translation_matrix([0, 0, self._shape_size*0.5])
+        self._addShape("Cube",self._toMeshData(trimesh.creation.box(extents = [self._shape_size, self._shape_size, self._shape_size], transform = Tz )))
         
     def addCylinder(self) -> None:
-        mesh = trimesh.creation.cylinder(radius = self._size / 2, height = self._size, sections=90)
-        mesh.apply_transform(trimesh.transformations.translation_matrix([0, 0, self._size*0.5]))
+        mesh = trimesh.creation.cylinder(radius = self._shape_size / 2, height = self._shape_size, sections=90)
+        mesh.apply_transform(trimesh.transformations.translation_matrix([0, 0, self._shape_size*0.5]))
         self._addShape("Cylinder",self._toMeshData(mesh))
 
     def addTube(self) -> None:
-        mesh = trimesh.creation.annulus(r_min = self._size / 4, r_max = self._size / 2, height = self._size, sections = 90)
-        mesh.apply_transform(trimesh.transformations.translation_matrix([0, 0, self._size*0.5]))
+        mesh = trimesh.creation.annulus(r_min = self._shape_size / 4, r_max = self._shape_size / 2, height = self._shape_size, sections = 90)
+        mesh.apply_transform(trimesh.transformations.translation_matrix([0, 0, self._shape_size*0.5]))
         self._addShape("Tube",self._toMeshData(mesh))
         
     # Sphere are not very usefull but I leave it for the moment    
     def addSphere(self) -> None:
         # subdivisions (int) – How many times to subdivide the mesh. Note that the number of faces will grow as function of 4 ** subdivisions, so you probably want to keep this under ~5
-        mesh = trimesh.creation.icosphere(subdivisions=4,radius = self._size / 2,)
-        mesh.apply_transform(trimesh.transformations.translation_matrix([0, 0, self._size*0.5]))
+        mesh = trimesh.creation.icosphere(subdivisions=4,radius = self._shape_size / 2,)
+        mesh.apply_transform(trimesh.transformations.translation_matrix([0, 0, self._shape_size*0.5]))
         self._addShape("Sphere",self._toMeshData(mesh))
 
     #----------------------------------------------------------
@@ -521,7 +420,7 @@ class CalibrationShapesReborn(QObject, Extension):
             definition_key=key + " label"
             untranslated_label=extruder_stack.getProperty(key,"label")
             translated_label=i18n_catalog.i18nc(definition_key, untranslated_label) 
-            Message(text = catalog.i18nc("@info:label","! Modification ! in the current profile of : ") + translated_label + atalog.i18nc("@info:label","\nNew value :") + " %s" % (str(val)), title = catalog.i18nc("@info:title", "Warning ! Calibration Shapes"), message_type = Message.MessageType.WARNING).show()
+            Message(text = catalog.i18nc("@info:label","! Modification ! in the current profile of : ") + translated_label + catalog.i18nc("@info:label","\nNew value :") + " %s" % (str(val)), title = catalog.i18nc("@info:title", "Warning ! Calibration Shapes"), message_type = Message.MessageType.WARNING).show()
             # Define adaptive_layer
             global_container_stack.setProperty("fill_perimeter_gaps", "value", val)
         
@@ -529,7 +428,7 @@ class CalibrationShapesReborn(QObject, Extension):
         fill_perimeter_gaps = extruder.getProperty("fill_perimeter_gaps", "value")
         
         if fill_perimeter_gaps !=  val :
-            Message(text = catalog.i18nc("@info:label","! Modification ! for the extruder definition of : ") + translated_label + atalog.i18nc("@info:label","\nNew value :") + " %s" % (str(val)), title = catalog.i18nc("@info:title", "Warning ! Calibration Shapes"), message_type = Message.MessageType.WARNING).show()
+            Message(text = catalog.i18nc("@info:label","! Modification ! for the extruder definition of : ") + translated_label + catalog.i18nc("@info:label","\nNew value :") + " %s" % (str(val)), title = catalog.i18nc("@info:title", "Warning ! Calibration Shapes"), message_type = Message.MessageType.WARNING).show()
             # Define adaptive_layer
             extruder.setProperty("fill_perimeter_gaps", "value", val)
             

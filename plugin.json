@@ -1,7 +1,7 @@
 {
     "name": "Calibration Shapes Reborn",
     "author": "Slashee the Cow",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "description": "Adds test parts and simple shapes to the build plate",
     "minimum_cura_version": "5.0",
     "api": 8,
