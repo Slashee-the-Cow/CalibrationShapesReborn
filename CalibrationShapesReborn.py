@@ -26,7 +26,6 @@ import trimesh
 from typing import Optional, List
 
 from UM.Extension import Extension
-from UM.PluginRegistry import PluginRegistry
 from UM.Application import Application
 from cura.CuraApplication import CuraApplication
 
