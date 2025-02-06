@@ -5,7 +5,7 @@ import QtQuick.Controls 6.0
 import QtQuick.Layouts 6.0
 
 import UM 1.6 as UM
-import Cura 1.7 as Cura
+import Cura 1.6 as Cura
 
 UM.Dialog {
     id: csrSettings
@@ -23,7 +23,6 @@ UM.Dialog {
 
     Component.onCompleted: {
         shapeSizeValue = manager.ShapeSize
-        shapeSizeTextField.forceActiveFocus()
     }
 
     title: catalog.i18nc("@title", "Calibration Shapes Reborn Settings")
@@ -88,6 +87,10 @@ UM.Dialog {
                         if(validateInput(shapeSizeTextField.text)){
                             shapeSizeValue = parseInt(shapeSizeTextField.text)
                         }
+                    }
+
+                    Component.onCompleted: {
+                        forceActiveFocus()
                     }
                 }
             }

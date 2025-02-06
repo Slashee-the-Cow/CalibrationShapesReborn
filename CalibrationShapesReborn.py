@@ -14,16 +14,17 @@
 #       - Removed some more old, dead code.
 #       - Fixed a couple of typos in code that didn't affect functionality but bugged me.
 #       - Fixed a couple of typos in original code that would affect functionality.
+# 1.0.2:
+#       - Removed even more dead code - but now it uses less RAM than before!
+#       - Removed errant function call which broke functionality in older 5.x versions.
 
     
 # Imports from the python standard library to build the plugin functionality
 import os
-import sys
 import math
 import numpy
 import trimesh
 
-from typing import Optional, List
 
 from UM.Extension import Extension
 from UM.Application import Application
@@ -48,10 +49,6 @@ from UM.Message import Message
 from UM.i18n import i18nCatalog
 
 from PyQt6.QtCore import QObject, pyqtSlot, pyqtSignal, pyqtProperty
-
-i18n_cura_catalog = i18nCatalog("cura")
-i18n_catalog = i18nCatalog("fdmprinter.def.json")
-i18n_extrud_catalog = i18nCatalog("fdmextruder.def.json")
 
 # Suggested solution from fieldOfView . in this discussion solved in Cura 4.9
 # https://github.com/5axes/Calibration-Shapes/issues/1
@@ -186,10 +183,10 @@ class CalibrationShapesReborn(QObject, Extension):
  
     # Source code from MeshTools Plugin 
     # Copyright (c) 2020 Aldo Hoeben / fieldOfView
-    def _getAllSelectedNodes(self) -> List[SceneNode]:
+    def _getAllSelectedNodes(self) -> list[SceneNode]:
         selection = Selection.getAllSelectedObjects()[:]
         if selection:
-            deep_selection = []  # type: List[SceneNode]
+            deep_selection = []  # type: list[SceneNode]
             for selected_node in selection:
                 if selected_node.hasChildren():
                     deep_selection = deep_selection + selected_node.getAllChildren()
@@ -302,135 +299,6 @@ class CalibrationShapesReborn(QObject, Extension):
         mesh.apply_transform(trimesh.transformations.translation_matrix([0, 0, self._shape_size*0.5]))
         self._addShape("Sphere",self._toMeshData(mesh))
 
-    #----------------------------------------------------------
-    # Check retraction_enable must be True
-    #----------------------------------------------------------   
-    def _checkRetract(self, val):
-        # Logger.log("d", "In checkRetract = %s", str(val))
-        global_container_stack = CuraApplication.getInstance().getGlobalContainerStack() 
-        extruder = global_container_stack.extruderList[0]
-        extruder_stack = CuraApplication.getInstance().getExtruderManager().getActiveExtruderStacks()[0]
-        retraction_e = float(extruder.getProperty("retraction_enable", "value"))
-        
-        if retraction_e !=  val :
-            key="retraction_enable"
-            definition_key=key + " label"
-            untranslated_label=extruder_stack.getProperty(key,"label")
-            translated_label=i18n_catalog.i18nc(definition_key, untranslated_label)
-            Message(text = catalog.i18nc("@info:label","! Modification ! in the current profile of : ") + translated_label + catalog.i18nc("@info:label","\nNew value :") + " %s" % (str(val)), title = catalog.i18nc("@info:title", "Warning ! Calibration Shapes"), message_type = Message.MessageType.WARNING).show()
-            
-            # Define retraction_enable
-            extruder.setProperty("retraction_enable", "value", True)
-        
-        
-        retraction_amount = extruder.getProperty("retraction_amount", "value")
-        Logger.log("d", "In checkRetract retraction_amount = %s", str(retraction_amount))
-        
-        if  (retraction_amount == 0) :
-            key="retraction_amount"
-            definition_key=key + " label"
-            untranslated_label=extruder_stack.getProperty(key,"label")
-            translated_label=i18n_catalog.i18nc(definition_key, untranslated_label)
-            Message(text = catalog.i18nc("@info:label", "! Modification ! in the current profile of : ") + translated_label + catalog.i18nc("@info:label","\nNew value :") + " %s" % (str(1.0)), title = catalog.i18nc("@info:title", "Warning ! Calibration Shapes"), message_type = Message.MessageType.WARNING).show()
-               
-            # Define retraction_amount
-            extruder.setProperty("retraction_amount", "value", 1.0)
-            
-    #----------------------------------------------------------
-    # Check adaptive_layer_height_enabled must be False
-    #----------------------------------------------------------   
-    def _checkAdaptativ(self, val):
-        # Logger.log("d", "In checkAdaptativ = %s", str(val))
-        # Fix some settings in Cura to get a better result
-        global_container_stack = CuraApplication.getInstance().getGlobalContainerStack()
-        extruder_stack = CuraApplication.getInstance().getExtruderManager().getActiveExtruderStacks()[0]        
-        adaptive_layer = global_container_stack.getProperty("adaptive_layer_height_enabled", "value")
-        extruder = global_container_stack.extruderList[0]
-        
-        if adaptive_layer !=  val :
-            key="adaptive_layer_height_enabled"
-            definition_key=key + " label"
-            untranslated_label=extruder_stack.getProperty(key,"label")
-            translated_label=i18n_catalog.i18nc(definition_key, untranslated_label)  
-            Message(text = catalog.i18nc("@info:label", "! Modification ! in the current profile of : ") + translated_label + catalog.i18nc("@info:label","\nNew value :") + " %s" % (str(val)), title = catalog.i18nc("@info:title", "Warning ! Calibration Shapes"), message_type = Message.MessageType.WARNING).show()
-            # Define adaptive_layer
-            global_container_stack.setProperty("adaptive_layer_height_enabled", "value", False)
- 
-    #--------------------------------------------------------------------------  
-    # Check meshfix_union_all_remove_holes Set to true if nozzle_size > 0.4
-    #--------------------------------------------------------------------------    
-    def _checkAllRemoveHoles(self, val)-> bool:
-        global_container_stack = CuraApplication.getInstance().getGlobalContainerStack()
-        extruder_stack = CuraApplication.getInstance().getExtruderManager().getActiveExtruderStacks()[0]        
-        extruder = global_container_stack.extruderList[0]
-        _Remove = False
-        
-        nozzle_size = float(extruder.getProperty("machine_nozzle_size", "value"))
-        remove_holes = extruder.getProperty("meshfix_union_all_remove_holes", "value")
-        # Logger.log("d", "In checkAdaptativ nozzle_size = %s", str(nozzle_size))
-        # Logger.log("d", "In checkAdaptativ remove_holes = %s", str(remove_holes))
-        
-        if (nozzle_size > 0.4) and (remove_holes == False) :
-            _Remove = True
-            key="meshfix_union_all_remove_holes"
-            definition_key=key + " label"
-            untranslated_label=extruder_stack.getProperty(key,"label")
-            translated_label=i18n_catalog.i18nc(definition_key, untranslated_label)  
-            Message(text = catalog.i18nc("@info:label","Individual definition for the calibration part of : ") + translated_label + catalog.i18nc("@info:label","\n(machine_nozzle_size>0.4)\nSet value :") + " %s" % (str(True)), title = catalog.i18nc("@info:title", "Information ! Calibration Shapes"), message_type = Message.MessageType.POSITIVE).show()
-                
-            # Define adaptive_layer
-            # extruder.setProperty("meshfix_union_all_remove_holes", "value", True) 
-        return _Remove
-        
-    #--------------------------------------------------------------
-    # Check fill_outline_gaps (Print Thin Walls V5.0) must be True
-    #--------------------------------------------------------------   
-    def _checkThinWalls(self, val)-> bool:
-        # Logger.log("d", "In checkThinWalls = %s", str(val))
-        # Fix some settings in Cura to get a better result
-        global_container_stack = CuraApplication.getInstance().getGlobalContainerStack() 
-        extruder_stack = CuraApplication.getInstance().getExtruderManager().getActiveExtruderStacks()[0] 
-        thin_wall = global_container_stack.getProperty("fill_outline_gaps", "value")
-        
-        if thin_wall !=  val :
-            key="fill_outline_gaps"
-            definition_key=key + " label"
-            untranslated_label=extruder_stack.getProperty(key,"label")
-            translated_label=i18n_catalog.i18nc(definition_key, untranslated_label)            
-            Message(text = catalog.i18nc("@info:label","Individual definition for the calibration part of : ") + translated_label + catalog.i18nc("@info:label","\nSet value :") + " %s" % (str(val)), title = catalog.i18nc("@info:title", "Information ! Calibration Shapes"), message_type = Message.MessageType.POSITIVE).show()
-            
-            thin_wall =  val
-            # global_container_stack.setProperty("fill_outline_gaps", "value", val)
-           
-        return thin_wall
-        
-    #----------------------------------------------------------
-    # Check fill_perimeter_gaps (Fill Gaps Between Walls) must be "nowhere"
-    #----------------------------------------------------------   
-    def _checkFill_Perimeter_Gaps(self, val):
-        # Logger.log("d", "In checkAdaptativ = %s", str(val))
-        # Fix some settings in Cura to get a better result
-        global_container_stack = CuraApplication.getInstance().getGlobalContainerStack()
-        extruder_stack = CuraApplication.getInstance().getExtruderManager().getActiveExtruderStacks()[0]         
-        fill_perimeter_gaps = global_container_stack.getProperty("fill_perimeter_gaps", "value")
-        
-        if fill_perimeter_gaps !=  val :
-            key="fill_perimeter_gaps"
-            definition_key=key + " label"
-            untranslated_label=extruder_stack.getProperty(key,"label")
-            translated_label=i18n_catalog.i18nc(definition_key, untranslated_label) 
-            Message(text = catalog.i18nc("@info:label","! Modification ! in the current profile of : ") + translated_label + catalog.i18nc("@info:label","\nNew value :") + " %s" % (str(val)), title = catalog.i18nc("@info:title", "Warning ! Calibration Shapes"), message_type = Message.MessageType.WARNING).show()
-            # Define adaptive_layer
-            global_container_stack.setProperty("fill_perimeter_gaps", "value", val)
-        
-        extruder = global_container_stack.extruderList[0]
-        fill_perimeter_gaps = extruder.getProperty("fill_perimeter_gaps", "value")
-        
-        if fill_perimeter_gaps !=  val :
-            Message(text = catalog.i18nc("@info:label","! Modification ! for the extruder definition of : ") + translated_label + catalog.i18nc("@info:label","\nNew value :") + " %s" % (str(val)), title = catalog.i18nc("@info:title", "Warning ! Calibration Shapes"), message_type = Message.MessageType.WARNING).show()
-            # Define adaptive_layer
-            extruder.setProperty("fill_perimeter_gaps", "value", val)
-            
     #----------------------------------------
     # Initial Source code from  fieldOfView
     #----------------------------------------  
@@ -523,8 +391,7 @@ class CalibrationShapesReborn(QObject, Extension):
             new_instance.setProperty("value", mode)
             new_instance.resetState()  # Ensure that the state is not seen as a user state.
             settings.addInstance(new_instance)
-
-        node.setSetting(SceneNodeSettings.AutoDropDown, True)
+            
             
         active_build_plate = application.getMultiBuildPlateModel().activeBuildPlate
         node.addDecorator(BuildPlateDecorator(active_build_plate))
