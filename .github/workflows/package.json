@@ -5,7 +5,7 @@
         "email": "slasheethecow@gmail.com",
         "website": "http://github.com/Slashee-the-Cow/"
     },
-    "description": "Adds a tool for measuring parts of models.\n\nThe plugin lets the user select two points, either on models or on the build plate. The distance between these two points is shown in the panel for the tool; the distance is shown both per axis and diagonally. \n\nWhen clicking the tool moves the closest of the two points to the cursor. Hold down the shift key to alternate between the two points instead.\n\nThe development of this plugin can be sponsored via Github Sponsors (https://github.com/sponsors/fieldofview) or Paypal (https://www.paypal.me/fieldofview)",
+    "description": "Adds models to test your printer's capabilities. You can also add some basic shapes (cylinder, cube, sphere, tube). Originally by 5@xes",
     "display_name": "Calibration Shapes Reborn",
     "package_id": "CalibrationShapesReborn",
     "package_type": "plugin",
