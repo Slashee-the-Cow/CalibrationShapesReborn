@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Calibration Shapes Reborn\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2025-01-30 01:14+0000\n"
+"POT-Creation-Date: 2025-02-06 09:24+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -17,209 +17,157 @@ msgstr ""
 "Content-Type: text/plain; charset=CHARSET\n"
 "Content-Transfer-Encoding: 8bit\n"
 
-#: CalibrationShapesReborn.py:88
+#: CalibrationShapesReborn.py:85
 msgctxt "@item:inmenu"
 msgid "Calibration Shapes"
 msgstr ""
 
-#: CalibrationShapesReborn.py:89
+#: CalibrationShapesReborn.py:86
 msgctxt "@item:inmenu"
 msgid "Add a cube"
 msgstr ""
 
-#: CalibrationShapesReborn.py:90
+#: CalibrationShapesReborn.py:87
 msgctxt "@item:inmenu"
 msgid "Add a cylinder"
 msgstr ""
 
-#: CalibrationShapesReborn.py:91
+#: CalibrationShapesReborn.py:88
 msgctxt "@item:inmenu"
 msgid "Add a sphere"
 msgstr ""
 
-#: CalibrationShapesReborn.py:92
+#: CalibrationShapesReborn.py:89
 msgctxt "@item:inmenu"
 msgid "Add a tube"
 msgstr ""
 
-#: CalibrationShapesReborn.py:94
+#: CalibrationShapesReborn.py:91
 msgctxt "@item:inmenu"
 msgid "Add a Calibration Cube"
 msgstr ""
 
-#: CalibrationShapesReborn.py:95
+#: CalibrationShapesReborn.py:92
 msgctxt "@item:inmenu"
 msgid "Add a Layer Adhesion Test"
 msgstr ""
 
-#: CalibrationShapesReborn.py:96
+#: CalibrationShapesReborn.py:93
 msgctxt "@item:inmenu"
 msgid "Add a Retract Test"
 msgstr ""
 
-#: CalibrationShapesReborn.py:97
+#: CalibrationShapesReborn.py:94
 msgctxt "@item:inmenu"
 msgid "Add a XY Calibration Test"
 msgstr ""
 
-#: CalibrationShapesReborn.py:98
+#: CalibrationShapesReborn.py:95
 msgctxt "@item:inmenu"
 msgid "Add a Dimensional Accuracy Test"
 msgstr ""
 
-#: CalibrationShapesReborn.py:99
+#: CalibrationShapesReborn.py:96
 msgctxt "@item:inmenu"
 msgid "Add a Tolerance Test"
 msgstr ""
 
-#: CalibrationShapesReborn.py:100
+#: CalibrationShapesReborn.py:97
 msgctxt "@item:inmenu"
 msgid "Add a Hole Test"
 msgstr ""
 
-#: CalibrationShapesReborn.py:103
+#: CalibrationShapesReborn.py:100
 msgctxt "@item:inmenu"
 msgid "Add a Bridge Test"
 msgstr ""
 
-#: CalibrationShapesReborn.py:104
+#: CalibrationShapesReborn.py:101
 msgctxt "@item:inmenu"
 msgid "Add a Thin Wall Test"
 msgstr ""
 
-#: CalibrationShapesReborn.py:106
+#: CalibrationShapesReborn.py:103
 msgctxt "@item:inmenu"
 msgid "Add an Overhang Test"
 msgstr ""
 
-#: CalibrationShapesReborn.py:107
+#: CalibrationShapesReborn.py:104
 msgctxt "@item:inmenu"
 msgid "Add a Flow Test"
 msgstr ""
 
-#: CalibrationShapesReborn.py:109
+#: CalibrationShapesReborn.py:106
 msgctxt "@item:inmenu"
 msgid "Add a Support Test"
 msgstr ""
 
-#: CalibrationShapesReborn.py:110
+#: CalibrationShapesReborn.py:107
 msgctxt "@item:inmenu"
 msgid "Add a Lithophane Test"
 msgstr ""
 
-#: CalibrationShapesReborn.py:113
+#: CalibrationShapesReborn.py:110
 msgctxt "@item:inmenu"
 msgid "Add a Bed Level Calibration"
 msgstr ""
 
-#: CalibrationShapesReborn.py:114
+#: CalibrationShapesReborn.py:111
 msgctxt "@item:inmenu"
 msgid "Add a Backlash Test"
 msgstr ""
 
-#: CalibrationShapesReborn.py:115
+#: CalibrationShapesReborn.py:112
 msgctxt "@item:inmenu"
 msgid "Add a Linear/Pressure Adv Tower"
 msgstr ""
 
-#: CalibrationShapesReborn.py:117
+#: CalibrationShapesReborn.py:114
 msgctxt "@item:inmenu"
 msgid "Add a Cube bi-color"
 msgstr ""
 
-#: CalibrationShapesReborn.py:118
+#: CalibrationShapesReborn.py:115
 msgctxt "@item:inmenu"
 msgid "Add a Bi-Color Calibration Cube"
 msgstr ""
 
-#: CalibrationShapesReborn.py:119
+#: CalibrationShapesReborn.py:116
 msgctxt "@item:inmenu"
 msgid "Add an Extruder Offset Calibration Part"
 msgstr ""
 
-#: CalibrationShapesReborn.py:121
+#: CalibrationShapesReborn.py:118
 msgctxt "@item:inmenu"
 msgid "Set default size"
 msgstr ""
 
-#: CalibrationShapesReborn.py:201
+#: CalibrationShapesReborn.py:198
 msgctxt "@info:status"
 msgid "Please select one or more models first"
 msgstr ""
 
-#: CalibrationShapesReborn.py:320 CalibrationShapesReborn.py:334
-#: CalibrationShapesReborn.py:355 CalibrationShapesReborn.py:422
-msgctxt "@info:label"
-msgid "! Modification ! in the current profile of : "
-msgstr ""
-
-#: CalibrationShapesReborn.py:320 CalibrationShapesReborn.py:334
-#: CalibrationShapesReborn.py:355 CalibrationShapesReborn.py:422
-#: CalibrationShapesReborn.py:430
-msgctxt "@info:label"
-msgid ""
-"\n"
-"New value :"
-msgstr ""
-
-#: CalibrationShapesReborn.py:320 CalibrationShapesReborn.py:334
-#: CalibrationShapesReborn.py:355 CalibrationShapesReborn.py:422
-#: CalibrationShapesReborn.py:430
-msgctxt "@info:title"
-msgid "Warning ! Calibration Shapes"
-msgstr ""
-
-#: CalibrationShapesReborn.py:379 CalibrationShapesReborn.py:400
-msgctxt "@info:label"
-msgid "Individual definition for the calibration part of : "
-msgstr ""
-
-#: CalibrationShapesReborn.py:379
-msgctxt "@info:label"
-msgid ""
-"\n"
-"(machine_nozzle_size>0.4)\n"
-"Set value :"
-msgstr ""
-
-#: CalibrationShapesReborn.py:379 CalibrationShapesReborn.py:400
-msgctxt "@info:title"
-msgid "Information ! Calibration Shapes"
-msgstr ""
-
-#: CalibrationShapesReborn.py:400
-msgctxt "@info:label"
-msgid ""
-"\n"
-"Set value :"
-msgstr ""
-
-#: CalibrationShapesReborn.py:430
-msgctxt "@info:label"
-msgid "! Modification ! for the extruder definition of : "
-msgstr ""
-
-#: qml/settings.qml:29
+#: qml/settings.qml:28
 msgctxt "@title"
 msgid "Calibration Shapes Reborn Settings"
 msgstr ""
 
-#: qml/settings.qml:64
+#: qml/settings.qml:63
 msgctxt "@label"
 msgid "Shape size"
 msgstr ""
 
-#: qml/settings.qml:109
+#: qml/settings.qml:112
 msgctxt "@warning_text"
 msgid "Please enter a valid number<br>Between 1 and 200"
 msgstr ""
 
-#: qml/settings.qml:121
+#: qml/settings.qml:124
 msgctxt "@cancel"
 msgid "Cancel"
 msgstr ""
 
-#: qml/settings.qml:129
+#: qml/settings.qml:132
 msgctxt "@save"
 msgid "Save"
 msgstr ""
