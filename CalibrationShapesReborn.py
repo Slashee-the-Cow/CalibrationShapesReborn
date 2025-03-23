@@ -17,38 +17,54 @@
 # 1.0.2:
 #       - Removed even more dead code - but now it uses less RAM than before!
 #       - Removed errant function call which broke functionality in older 5.x versions.
+# 1.1.0:
+#       - Added "Custom Hollow Box" and "Custom Hollow Cylinder" from an audience request (see, I want your ideas!)
 
     
-# Imports from the python standard library to build the plugin functionality
-import os
 import math
+import os
+
 import numpy
 import trimesh
-
-
-from UM.Extension import Extension
 from UM.Application import Application
 from cura.CuraApplication import CuraApplication
-
-from UM.Mesh.MeshData import MeshData, calculateNormalsFromIndexedVertices
-from UM.Resources import Resources
-from UM.Settings.SettingInstance import SettingInstance
-from cura.Scene.CuraSceneNode import CuraSceneNode
-from UM.Scene.SceneNode import SceneNode
-from UM.Scene.Selection import Selection
-from UM.Scene.SceneNodeSettings import SceneNodeSettings
-from cura.Scene.SliceableObjectDecorator import SliceableObjectDecorator
 from cura.Scene.BuildPlateDecorator import BuildPlateDecorator
+from cura.Scene.CuraSceneNode import CuraSceneNode
+from cura.Scene.SliceableObjectDecorator import SliceableObjectDecorator
+from UM.Extension import Extension
+from UM.i18n import i18nCatalog
+from UM.Logger import Logger
+from UM.Mesh.MeshData import MeshData, calculateNormalsFromIndexedVertices
+from UM.Message import Message
 from UM.Operations.AddSceneNodeOperation import AddSceneNodeOperation
 from UM.Operations.RemoveSceneNodeOperation import RemoveSceneNodeOperation
 from UM.Operations.SetTransformOperation import SetTransformOperation
+from UM.Resources import Resources
+from UM.Scene.SceneNode import SceneNode
+from UM.Scene.SceneNodeSettings import SceneNodeSettings
+from UM.Scene.Selection import Selection
+from UM.Settings.SettingInstance import SettingInstance
 
-from UM.Logger import Logger
-from UM.Message import Message
+from PyQt6.QtCore import QObject, pyqtProperty, pyqtSignal, pyqtSlot
 
-from UM.i18n import i18nCatalog
+import trimesh.creation
 
-from PyQt6.QtCore import QObject, pyqtSlot, pyqtSignal, pyqtProperty
+DEBUG_MODE = True
+
+def log(level, message):
+    """Wrapper function for logging messages using Cura's Logger, but with debug mode so as not to spam you."""
+    if level == "d" and DEBUG_MODE:
+        Logger.log("d", message)
+    elif level == "i":
+        Logger.log("i", message)
+    elif level == "w":
+        Logger.log("w", message)
+    elif level == "e":
+        Logger.log("e", message)
+    elif level == "c":
+        Logger.log("c", message)
+    elif DEBUG_MODE:
+        Logger.log("w", f"Invalid log level: {level} for message {message}")
 
 # Suggested solution from fieldOfView . in this discussion solved in Cura 4.9
 # https://github.com/5axes/Calibration-Shapes/issues/1
@@ -62,23 +78,41 @@ catalog = i18nCatalog("calibrationshapesreborn")
 if catalog.hasTranslationLoaded():
     Logger.log("i", "Calibration Shapes Reborn Plugin translation loaded!")
 
-#This class is the extension and doubles as QObject to manage the qml    
 class CalibrationShapesReborn(QObject, Extension):
-    
-    
+       
     def __init__(self, parent = None) -> None:
         super().__init__()
         
         # set the preferences to store the default value
         self._preferences = CuraApplication.getInstance().getPreferences()
         self._preferences.addPreference("calibrationshapesreborn/shapesize", 20)
+        
+        self._preferences.addPreference("calibrationshapesreborn/hollow_box_width", 50)
+        self._preferences.addPreference("calibrationshapesreborn/hollow_box_depth", 40)
+        self._preferences.addPreference("calibrationshapesreborn/hollow_box_height", 40)
+        self._preferences.addPreference("calibrationshapesreborn/hollow_box_wall_width", 3)
+        self._preferences.addPreference("calibrationshapesreborn/hollow_box_ceiling_height", 3)
 
         self._shape_size = float(self._preferences.getValue("calibrationshapesreborn/shapesize"))  
+        
+        self._custom_hollow_box_width \
+            = int(self._preferences.getValue("calibrationshapesreborn/hollow_box_width"))
+        self._custom_hollow_box_depth \
+            = int(self._preferences.getValue("calibrationshapesreborn/hollow_box_depth"))
+        self._custom_hollow_box_height \
+            = int(self._preferences.getValue("calibrationshapesreborn/hollow_box_height"))
+        self._custom_hollow_box_wall_width \
+            = float(self._preferences.getValue("calibrationshapesreborn/hollow_box_wall_width"))
+        self._custom_hollow_box_ceiling_height \
+            = float(self._preferences.getValue("calibrationshapesreborn/hollow_box_ceiling_height"))
 
         self._settings_popup = None
         
+        self._hollow_box_dialog = None
+        
         # self._settings_qml = os.path.join(os.path.dirname(os.path.abspath(__file__)), "qml", "settings.qml")
         self._settings_qml = os.path.abspath(os.path.join(os.path.dirname(__file__), "qml", "settings.qml"))
+        self._hollow_box_qml = os.path.abspath(os.path.join(os.path.dirname(__file__), "qml", "customHollowBox.qml"))
         
         self._controller = CuraApplication.getInstance().getController()
         
@@ -87,7 +121,10 @@ class CalibrationShapesReborn(QObject, Extension):
         self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a cylinder"), self.addCylinder)
         self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a sphere"), self.addSphere)
         self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a tube"), self.addTube)
-        self.addMenuItem("", lambda: None)
+        self.addMenuItem("   ", lambda: None)
+        self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a custom hollow box"), \
+            self.add_custom_hollow_box_dialog)
+        self.addMenuItem("   ", lambda: None)
         self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a Calibration Cube"), self.addCalibrationCube)
         self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a Layer Adhesion Test"), self.addLayerAdhesion)
         self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a Retract Test"), self.addRetractTest)
@@ -110,7 +147,7 @@ class CalibrationShapesReborn(QObject, Extension):
         self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a Bed Level Calibration"), self.addBedLevelCalibration)
         self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a Backlash Test"), self.addBacklashTest)
         self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a Linear/Pressure Adv Tower"), self.addPressureAdvTower)
-        self.addMenuItem("  ", lambda: None)
+        self.addMenuItem("   ", lambda: None)
         self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a Cube bi-color"), self.addCubeBiColor)
         self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a Bi-Color Calibration Cube"), self.addHollowCalibrationCube)
         self.addMenuItem(catalog.i18nc("@item:inmenu", "Add an Extruder Offset Calibration Part"), self.addExtruderOffsetCalibration)        
@@ -141,10 +178,101 @@ class CalibrationShapesReborn(QObject, Extension):
     def ShapeSize(self) -> int:
         #Logger.log("d", f"ShapeSize pyqtProperty accessed: {self._shape_size}, cast to {int(self._shape_size)}")
         return int(self._shape_size)
-          
+    
+    _hollow_box_width_changed = pyqtSignal()
+    _hollow_box_depth_changed = pyqtSignal()
+    _hollow_box_height_changed = pyqtSignal()
+    _hollow_box_wall_width_changed = pyqtSignal()
+    _hollow_box_ceiling_height_changed = pyqtSignal()
+
+    def _set_hollow_box_width(self, value: int) -> None:
+        try:
+            new_value = int(value)
+        except ValueError:
+            log("w", "_set_hollow_box_width got passed a non-int")
+            return
+        self._preferences.setValue("calibrationshapesreborn/hollow_box_width", new_value)
+        self._custom_hollow_box_width = new_value
+        self._hollow_box_wall_width_changed.emit()
+
+    @pyqtProperty(int, notify=_hollow_box_width_changed, fset=_set_hollow_box_width)
+    def hollow_box_width(self) -> int:
+        return self._custom_hollow_box_width
+
+    def _set_hollow_box_depth(self, value: int) -> None:
+        try:
+            new_value = int(value)
+        except ValueError:
+            log("w", "_set_hollow_box_depth got passed a non-int")
+            return
+        self._preferences.setValue("calibrationshapesreborn/hollow_box_depth", new_value)
+        self._custom_hollow_box_depth = new_value
+        self._hollow_box_depth_changed.emit()
+        
+    @pyqtProperty(int, notify=_hollow_box_depth_changed, fset=_set_hollow_box_depth)
+    def hollow_box_depth(self) -> int:
+        return self._custom_hollow_box_depth
+
+    def _set_hollow_box_height(self, value: int) -> None:
+        try:
+            new_value = int(value)
+        except ValueError:
+            log("w", "_set_hollow_box_height got passed a non-int")
+            return
+        self._preferences.setValue("calibrationshapesreborn/hollow_box_height", new_value)
+        self._custom_hollow_box_height = new_value
+        self._hollow_box_height_changed.emit()
+        
+    @pyqtProperty(int, notify=_hollow_box_height_changed, fset=_set_hollow_box_height)
+    def hollow_box_height(self) -> int:
+        return self._custom_hollow_box_height
+
+    def _set_hollow_box_wall_width(self, value: float) -> None:
+        try:
+            new_value = float(value)
+        except ValueError:
+            log("w", "set_hollow_box_wall_width got passed a non-float")
+            return
+        self._preferences.setValue("calibrationshapesreborn/hollow_box_wall_width", new_value)
+        self._custom_hollow_box_wall_width = new_value
+        self._hollow_box_wall_width_changed.emit()
+        
+    @pyqtProperty(float, notify=_hollow_box_wall_width_changed, fset=_set_hollow_box_wall_width)
+    def hollow_box_wall_width(self) -> float:
+        return self._custom_hollow_box_wall_width
+
+    def _set_hollow_box_ceiling_height(self, value: float) -> None:
+        try:
+            new_value = float(value)
+        except ValueError:
+            log("w", "set_hollow_box_ceiling_height got passed a non-float")
+        self._preferences.setValue(
+            "calibrationshapesreborn/hollow_box_ceiling_height", new_value)
+        self._custom_hollow_box_ceiling_height = new_value
+        self._hollow_box_ceiling_height_changed.emit()
+
+    @pyqtProperty(float, notify=_hollow_box_ceiling_height_changed, fset=_set_hollow_box_ceiling_height)
+    def hollow_box_ceiling_height(self) -> float:
+        return self._custom_hollow_box_depth
+
+    def add_custom_hollow_box_dialog(self):
+        """Loads the dialog to make a custom hollow box"""
+        if self._hollow_box_dialog is None:
+            self._create_hollow_box_dialog()
+        self._hollow_box_dialog.show()
+
+    def _create_hollow_box_dialog(self) -> None:
+        """Creates the custom hollow box dialog if
+        it doesn't already exist"""
+        context_dict = {
+            "manager": self,
+        }
+        self._hollow_box_dialog = CuraApplication.getInstance().\
+            createQmlComponent(self._hollow_box_qml, context_dict)
+
     def addBedLevelCalibration(self) -> None:
         # Get the build plate Size
-        machine_manager = CuraApplication.getInstance().getMachineManager()        
+        machine_manager = CuraApplication.getInstance().getMachineManager()
         stack = CuraApplication.getInstance().getGlobalContainerStack()
 
         global_stack = machine_manager.activeMachine
@@ -190,7 +318,7 @@ class CalibrationShapesReborn(QObject, Extension):
             for selected_node in selection:
                 if selected_node.hasChildren():
                     deep_selection = deep_selection + selected_node.getAllChildren()
-                if selected_node.getMeshData() != None:
+                if selected_node.getMeshData() is not None:
                     deep_selection.append(selected_node)
             if deep_selection:
                 return deep_selection
@@ -298,6 +426,29 @@ class CalibrationShapesReborn(QObject, Extension):
         mesh = trimesh.creation.icosphere(subdivisions=4,radius = self._shape_size / 2,)
         mesh.apply_transform(trimesh.transformations.translation_matrix([0, 0, self._shape_size*0.5]))
         self._addShape("Sphere",self._toMeshData(mesh))
+        
+    #---------------
+    #  Custom Stuff
+    # --------------
+    @pyqtSlot()
+    def make_custom_hollow_box(self) -> None:
+        height = self._custom_hollow_box_height
+        width = self._custom_hollow_box_width
+        depth = self._custom_hollow_box_depth
+        wall_width = self._custom_hollow_box_wall_width
+        ceiling_height = self._custom_hollow_box_ceiling_height
+        """Function that actually creates a hollow box."""
+        up_half_height_outer = trimesh.transformations.translation_matrix(
+            [0,0,height/2])
+        outer_box = trimesh.creation.box(
+            extents = [width, depth, height], transform=up_half_height_outer)
+        up_half_height_inner = trimesh.transformations.translation_matrix(
+            [0,0,(height-ceiling_height)/2])
+        inner_box = trimesh.creation.box(
+            extents = [width-(wall_width*2), depth-(wall_width*2),
+                       height-ceiling_height], transform=up_half_height_inner)
+        hollow_box = trimesh.boolean.difference([outer_box], [inner_box])
+        self._addShape("Hollow Box",self._toMeshData(hollow_box))
 
     #----------------------------------------
     # Initial Source code from  fieldOfView
@@ -308,7 +459,6 @@ class CalibrationShapesReborn(QObject, Extension):
         tri_node.apply_transform(trimesh.transformations.rotation_matrix(math.radians(90), [-1, 0, 0]))
         tri_faces = tri_node.faces
         tri_vertices = tri_node.vertices
-
         # Following Source code from  fieldOfView
         # https://github.com/fieldOfView/Cura-SimpleShapes/blob/bac9133a2ddfbf1ca6a3c27aca1cfdd26e847221/SimpleShapes.py#L45
         indices = []
