@@ -28,19 +28,96 @@ UM.Dialog {
         if (floatTest < minimum){return false}
         return true
     }
+
+    property var default_field_background: UM.Theme.getColor("detail_background")
+    property var error_field_background: UM.Theme.getColor("setting_validation_error_background")
+
+    function getBackgroundColour(valid){
+        return valid ? default_field_background : error_field_background
+    }
     
     function validateInputs(){
-        customBridgingTriangle.inputsValid = (
-                        validateInt(triangleWidth, 1) &&
-                        validateInt(triangleDepth, 1) &&
-                        validateInt(triangleHeight, 1) &&
-                        validateFloat(triangleWallWidth, 0.1) &&
-                        validateFloat(triangleRoofHeight, 0.1))
-        //manager.logMessage("validateInputs just set inputsValid to " + inputsValid)
+        let message = ""
+        let widthValid = true
+        let depthValid = true
+        let heightValid = true
+        let wallValid = true
+        let roofValid = true
+        if (!validateInt(triangleWidth, 1)){
+            widthValid = false;
+            message += catalog.i18nc("@error:width_invalid", "Box width must be a whole number 1 or higher.<br>");
+        }
+
+        if (!validateInt(triangleDepth, 1)){
+            depthValid = false;
+            message += catalog.i18nc("@error:depth_invalid", "Box depth must be a whole number 1 or higher.<br>");
+        }
+
+        if (!validateInt(triangleHeight, 1)){
+            heightValid = false;
+            message += catalog.i18nc("@error:height_invalid", "Box height must be a whole number 1 or higher.<br>");
+        }
+
+        if (!validateFloat(triangleWallWidth, 0.1)){
+            wallValid = false;
+            message += catalog.i18nc("@error:wallWidth_invalid", "Box wall width must be 0.1 or higher.<br>");
+        }
+
+        if (!validateFloat(triangleRoofHeight, 0.1)){
+            roofValid = false;
+            message += catalog.i18nc("@error:roofThickness_invalid", "Roof thickness must be 0.1 or higher.<br>");
+        }
+        
+        // Test fields for inter-dependencies
+        let width = null
+        let depth = null
+        let height = null
+        let wall = null
+        let roof = null
+        if (widthValid) {width = parseInt(triangleWidth)}
+        if (depthValid) {depth = parseInt(triangleDepth)}
+        if (heightValid) {height = parseInt(triangeHeight)}
+        if (wallValid) {wall = parseFloat(triangleWallWidth)}
+        if (roofValid) {roof = parseFloat(triangleRoofHeight)}
+
+        if (width && wall){
+            if (width <= wall * 2.5){
+                message += catalog.i18nc("@error:width_wall", "Triangle width must be greater than 2.5x wall width.<br>");
+                widthValid = false
+                wallValid = false
+            }
+        }
+
+        if (depth && wall){
+            if (depth <= wall * 2.5){
+                message += catalog.i18nc("@error:depth_wall", "Triangle depth must be greater than 2.5x wall width.<br>");
+                depthValid = false
+                wallValid = false
+            }
+        }
+
+        if (height && roof){
+            if (height <= roof){
+                message += catalog.i18nc("@error:height_roof", "Triangle height must be greater than roof thickness.<br>");
+                heightValid = false
+                roofValid = false
+            }
+        }
+        // Global property which controls "OK" button and ability to accept dialog with enter key
+        inputsValid = (widthValid && depthValid && heightValid && wallValid && roofValid)
+        // Global property which displays error message (duh)
+        error_message = message
+
+        // Set background for each box
+        baseWidth.background.color = getBackgroundColour(widthValid)
+        baseDepth.background.color = getBackgroundColour(depthValid)
+        totalHeight.background.color = getBackgroundColour(heightValid)
+        wallWidth.background.color = getBackgroundColour(wallValid)
+        roofThickness.background.color = getBackgroundColour(roofValid)
     }
 
     property variant catalog: UM.I18nCatalog {name: "calibrationshapresreborn" }
-    /* The first two are ints and the other two are reals. But I have no shortage
+    /* The first three are ints and the other two are reals. But I have no shortage
     of validation and never do maths with them here. */
     property string triangleWidth: "0"
     property string triangleDepth: "0"
@@ -49,6 +126,7 @@ UM.Dialog {
     property string triangleRoofHeight: "0.0"
 
     property bool inputsValid: false
+    property string error_message: ""
 
     Component.onCompleted: {
         triangleWidth = String(manager.bridging_triangle_base_width)
@@ -56,6 +134,7 @@ UM.Dialog {
         triangleHeight = String(manager.bridging_triangle_height)
         triangleWallWidth = String(manager.bridging_triangle_wall_width)
         triangleRoofHeight = String(manager.bridging_triangle_roof_height)
+        Qt.callLater(validateInputs)
     }
 
     title: catalog.i18nc("@window_title", "Custom Bridging Triangle")
@@ -99,7 +178,7 @@ UM.Dialog {
                 }
                 onTextChanged: {
                     triangleWidth = text
-                    validateInputs()
+                    Qt.callLater(validateInputs)
                 }
             }
 
@@ -119,7 +198,7 @@ UM.Dialog {
                 }
                 onTextChanged: {
                     triangleDepth = text
-                    validateInputs()
+                    Qt.callLater(validateInputs)
                 }
             }
 
@@ -139,7 +218,7 @@ UM.Dialog {
                 }
                 onTextChanged: {
                     triangleHeight = text
-                    validateInputs()
+                    Qt.callLater(validateInputs)
                 }
             }
 
@@ -161,7 +240,7 @@ UM.Dialog {
                 }
                 onTextChanged: {
                     triangleWallWidth = text
-                    validateInputs()
+                    Qt.callLater(validateInputs)
                 }
             }
 
@@ -183,7 +262,7 @@ UM.Dialog {
                 }
                 onTextChanged: {
                     triangleRoofHeight = text
-                    validateInputs()
+                    Qt.callLater(validateInputs)
                 }
             }
         }

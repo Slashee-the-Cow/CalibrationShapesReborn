@@ -28,30 +28,94 @@ UM.Dialog {
         if (floatTest < minimum){return false}
         return true
     }
+
+    property var default_field_background: UM.Theme.getColor("detail_background")
+    property var error_field_background: UM.Theme.getColor("setting_validation_error_background")
+
+    function getBackgroundColour(valid){
+        return valid ? default_field_background : error_field_background
+    }
     
     function validateInputs(){
-        customBridgingTube.inputsValid = (validateFloat(tubeOuterDiameter, 1) &&
-                        validateFloat(tubeInnerDiameter, 1) &&
-                        validateInt(tubeHeight, 1) &&
-                        validateFloat(tubeRoofHeight, 0.1))
-        //manager.logMessage("validateInputs just set inputsValid to " + inputsValid)
+        let message = ""
+        let outerDiameterValid = true
+        let innerDiameterValid = true
+        let heightValid = true
+        let roofValid = true
+        if (!validateFloat(tubeOuterDiameter, 0.1)){
+            outerDiameterValid = false;
+            message += catalog.i18nc("@error:outer_diameter_invalid", "Outer diameter must be 0.1 or higher.<br>");
+        }
+
+        if (!validateFloat(tubeInnerDiameter, 0.1)){
+            innerDiameterValid = false;
+            message += catalog.i18nc("@error:inner_diameter_invalid", "Inner diameter must be 0.1 or higher.<br>");
+        }
+
+        if (!validateInt(tubeHeight, 1)){
+            heightValid = false;
+            message += catalog.i18nc("@error:height_invalid", "Tube height must be a whole number 1 or higher.<br>");
+        }
+
+        if (!validateFloat(tubeRoofHeight, 0.1)){
+            roofValid = false;
+            message += catalog.i18nc("@error:roofThickness_invalid", "Roof thickness must be 0.1 or higher.<br>");
+        }
+        
+        // Test fields for inter-dependencies
+        let outer = null
+        let inner = null
+        let height = null
+        let roof = null
+        if (outerDiameterValid) {outer = parseFloat(tubeOuterDiameter)}
+        if (innerDiameterValid) {inner = parseFloat(tubeInnerDiameter)}
+        if (heightValid) {height = parseInt(tubeHeight)}
+        if (roofValid) {roof = parseFloat(tubeRoofHeight)}
+
+        if (outer && inner){
+            if (outer <= inner){
+                message += catalog.i18nc("@error:diameter_overlap", "Outer diameter must be greater than inner diameter.<br>");
+                outerDiameterValid = false
+                innerDiameterValid = false
+            }
+        }
+
+        if (height && roof){
+            if (height <= roof){
+                message += catalog.i18nc("@error:height_roof", "Tube height must be greater than roof thickness.<br>");
+                heightValid = false
+                roofValid = false
+            }
+        }
+        // Global property which controls "OK" button and ability to accept dialog with enter key
+        inputsValid = (outerDiameterValid && innerDiameterValid && heightValid && roofValid)
+        // Global property which displays error message (duh)
+        error_message = message
+
+        // Set background for each box
+        outerDiameter.background.color = getBackgroundColour(outerDiameterValid)
+        innerDiameter.background.color = getBackgroundColour(innerDiameterValid)
+        totalHeight.background.color = getBackgroundColour(heightValid)
+        roofThickness.background.color = getBackgroundColour(roofValid)
     }
 
     property variant catalog: UM.I18nCatalog {name: "calibrationshapresreborn" }
-    /* The first three are ints and the last one are reals. But I have no shortage
-    of validation and never do maths with them here. */
+    /* The first third is an int and the rest are reals. But I have no shortage
+    of validation and never do maths with them here so binding strings is handy. */
     property string tubeOuterDiameter: "0"
     property string tubeInnerDiameter: "0"
     property string tubeHeight: "0"
     property string tubeRoofHeight: "0.0"
 
     property bool inputsValid: false
+    property string error_message: ""
 
     Component.onCompleted: {
         tubeOuterDiameter = String(manager.bridging_tube_outer_diameter)
         tubeInnerDiameter = String(manager.bridging_tube_inner_diameter)
         tubeHeight = String(manager.bridging_tube_height)
         tubeRoofHeight = String(manager.bridging_tube_roof_height)
+        Qt.callLater(validateInputs)
     }
 
     title: catalog.i18nc("@window_title", "Custom Bridging Tube")
@@ -97,8 +161,7 @@ UM.Dialog {
                 }
                 onTextChanged: {
                     tubeOuterDiameter = text
-                    validateInputs()
-                    //manager.logMessage("totalWidth was just changed. tubeOuterDiameter is now " + tubeOuterDiameter + " and inputsValid is " + inputsValid + " and customBridgingTube.tubeOuterDiameter is " + customBridgingTube.tubeOuterDiameter)
+                    Qt.callLater(validateInputs)
                 }
             }
 
@@ -108,7 +171,7 @@ UM.Dialog {
             }
 
             UM.TextFieldWithUnit{
-                id: totalDepth
+                id: innerDiameter
                 Layout.minimumWidth: 75
                 height: UM.Theme.getSize("setting_control").height
                 unit: "mm"
@@ -120,7 +183,7 @@ UM.Dialog {
                 }
                 onTextChanged: {
                     tubeInnerDiameter = text
-                    validateInputs()
+                    Qt.callLater(validateInputs)
                 }
             }
 
@@ -140,7 +203,7 @@ UM.Dialog {
                 }
                 onTextChanged: {
                     tubeHeight = text
-                    validateInputs()
+                    Qt.callLater(validateInputs)
                 }
             }
 
@@ -162,11 +225,17 @@ UM.Dialog {
                 }
                 onTextChanged: {
                     tubeRoofHeight = text
-                    validateInputs()
+                    Qt.callLater(validateInputs)
                 }
             }
         }
-
+        UM.Label{
+            Layout.fillWidth: true
+            id: error_text
+            text: customBridgingTube.error_message
+            color: UM.Theme.getColor("error")
+            wrapMode: TextInput.Wrap
+        }
     }
     // Buttons
     rightButtons: [

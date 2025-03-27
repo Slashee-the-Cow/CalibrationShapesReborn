@@ -28,14 +28,92 @@ UM.Dialog {
         if (floatTest < minimum){return false}
         return true
     }
+
+    property var default_field_background: UM.Theme.getColor("detail_background")
+    property var error_field_background: UM.Theme.getColor("setting_validation_error_background")
+
+    function getBackgroundColour(valid){
+        return valid ? default_field_background : error_field_background
+    }
     
     function validateInputs(){
-        customBridgingBox.inputsValid = (validateInt(boxWidth, 1) &&
-                        validateInt(boxDepth, 1) &&
-                        validateInt(boxHeight, 1) &&
-                        validateFloat(boxWallWidth, 0.1) &&
-                        validateFloat(boxRoofHeight, 0.1))
-        //manager.logMessage("validateInputs just set inputsValid to " + inputsValid)
+        let message = ""
+        let widthValid = true
+        let depthValid = true
+        let heightValid = true
+        let wallValid = true
+        let roofValid = true
+        if (!validateInt(boxWidth, 1)){
+            widthValid = false;
+            message += catalog.i18nc("@error:width_invalid", "Box width must be a whole number 1 or higher.<br>");
+        }
+
+        if (!validateInt(boxDepth, 1)){
+            depthValid = false;
+            message += catalog.i18nc("@error:depth_invalid", "Box depth must be a whole number 1 or higher.<br>");
+        }
+
+        if (!validateInt(boxHeight, 1)){
+            heightValid = false;
+            message += catalog.i18nc("@error:height_invalid", "Box height must be a whole number 1 or higher.<br>");
+        }
+
+        if (!validateFloat(boxWallWidth, 0.1)){
+            wallValid = false;
+            message += catalog.i18nc("@error:wallWidth_invalid", "Box wall width must be 0.1 or higher.<br>");
+        }
+
+        if (!validateFloat(boxRoofHeight, 0.1)){
+            roofValid = false;
+            message += catalog.i18nc("@error:roofThickness_invalid", "Roof thickness must be 0.1 or higher.<br>");
+        }
+        
+        // Test fields for inter-dependencies
+        let width = null
+        let depth = null
+        let height = null
+        let wall = null
+        let roof = null
+        if (widthValid) {width = parseInt(boxWidth)}
+        if (depthValid) {depth = parseInt(boxDepth)}
+        if (heightValid) {height = parseInt(boxHeight)}
+        if (wallValid) {wall = parseFloat(boxWallWidth)}
+        if (roofValid) {roof = parseFloat(boxRoofHeight)}
+
+        if (width && wall){
+            if (width <= wall * 2){
+                message += catalog.i18nc("@error:width_wall", "Box width must be greater than twice wall width.<br>");
+                widthValid = false
+                wallValid = false
+            }
+        }
+
+        if (depth && wall){
+            if (depth <= wall * 2){
+                message += catalog.i18nc("@error:depth_wall", "Box depth must be greater than twice wall width.<br>");
+                depthValid = false
+                wallValid = false
+            }
+        }
+
+        if (height && roof){
+            if (height <= roof){
+                message += catalog.i18nc("@error:height_roof", "Box height must be greater than roof thickness.<br>");
+                heightValid = false
+                roofValid = false
+            }
+        }
+        // Global property which controls "OK" button and ability to accept dialog with enter key
+        inputsValid = (widthValid && depthValid && heightValid && wallValid && roofValid)
+        // Global property which displays error message (duh)
+        error_message = message
+
+        // Set background for each box
+        totalWidth.background.color = getBackgroundColour(widthValid)
+        totalDepth.background.color = getBackgroundColour(depthValid)
+        totalHeight.background.color = getBackgroundColour(heightValid)
+        wallWidth.background.color = getBackgroundColour(wallValid)
+        roofThickness.background.color = getBackgroundColour(roofValid)
     }
 
     property variant catalog: UM.I18nCatalog {name: "calibrationshapresreborn" }
@@ -48,13 +126,16 @@ UM.Dialog {
     property string boxRoofHeight: "0.0"
 
     property bool inputsValid: false
+    property string error_message: ""
 
     Component.onCompleted: {
+        //default_field_background = totalWidth.background.color
         boxWidth = String(manager.bridging_box_width)
         boxDepth = String(manager.bridging_box_depth)
         boxHeight = String(manager.bridging_box_height)
         boxWallWidth = String(manager.bridging_box_wall_width)
         boxRoofHeight = String(manager.bridging_box_roof_height)
+        Qt.callLater(validateInputs)
     }
 
     title: catalog.i18nc("@window_title", "Custom Bridging Box")
@@ -98,8 +179,7 @@ UM.Dialog {
                 }
                 onTextChanged: {
                     boxWidth = text
-                    validateInputs()
-                    //manager.logMessage("totalWidth was just changed. boxWidth is now " + boxWidth + " and inputsValid is " + inputsValid + " and customBridgingBox.boxWidth is " + customBridgingBox.boxWidth)
+                    Qt.callLater(validateInputs)
                 }
             }
 
@@ -119,7 +199,7 @@ UM.Dialog {
                 }
                 onTextChanged: {
                     boxDepth = text
-                    validateInputs()
+                    Qt.callLater(validateInputs)
                 }
             }
 
@@ -139,7 +219,7 @@ UM.Dialog {
                 }
                 onTextChanged: {
                     boxHeight = text
-                    validateInputs()
+                    Qt.callLater(validateInputs)
                 }
             }
 
@@ -161,7 +241,7 @@ UM.Dialog {
                 }
                 onTextChanged: {
                     boxWallWidth = text
-                    validateInputs()
+                    Qt.callLater(validateInputs)
                 }
             }
 
@@ -183,11 +263,17 @@ UM.Dialog {
                 }
                 onTextChanged: {
                     boxRoofHeight = text
-                    validateInputs()
+                    Qt.callLater(validateInputs)
                 }
             }
         }
-
+        UM.Label{
+            Layout.fillWidth: true
+            id: error_text
+            text: customBridgingBox.error_message
+            color: UM.Theme.getColor("error")
+            wrapMode: TextInput.Wrap
+        }
     }
     // Buttons
     rightButtons: [

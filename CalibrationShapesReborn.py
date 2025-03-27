@@ -18,14 +18,14 @@
 #       - Removed even more dead code - but now it uses less RAM than before!
 #       - Removed errant function call which broke functionality in older 5.x versions.
 # 1.1.0:
-#       - Added "Custom Bridging Hollow Box" and "Custom Hollow Cylinder" from an audience request (see, I want your ideas!)
+#       - Added custom bridging boxes, tubes and triangles thanks to an audience request (see, I want your ideas!)
+#       - Removed even more dead code.
 
 
 import math
 import os
 
 import numpy
-from shapely import Polygon
 import trimesh
 from UM.Application import Application
 from cura.CuraApplication import CuraApplication
@@ -53,7 +53,7 @@ from PyQt6.QtCore import QObject, pyqtProperty, pyqtSignal, pyqtSlot
 
 import trimesh.creation
 
-DEBUG_MODE = True
+DEBUG_MODE = False
 
 def log(level, message):
     """Wrapper function for logging messages using Cura's Logger, but with debug mode so as not to spam you."""
@@ -108,38 +108,39 @@ class CalibrationShapesReborn(QObject, Extension):
         self._preferences.addPreference("calibrationshapesreborn/bridging_triangle_wall_width", 3)
         self._preferences.addPreference("calibrationshapesreborn/bridging_triangle_roof_height", 1)
 
-        self._shape_size = float(self._preferences.getValue("calibrationshapesreborn/shapesize"))
+        self._shape_size = float(self._preferences.getValue \
+            ("calibrationshapesreborn/shapesize"))
         
-        self._bridging_box_width \
-            = int(self._preferences.getValue("calibrationshapesreborn/bridging_box_width"))
-        self._bridging_box_depth \
-            = int(self._preferences.getValue("calibrationshapesreborn/bridging_box_depth"))
-        self._bridging_box_height \
-            = int(self._preferences.getValue("calibrationshapesreborn/bridging_box_height"))
-        self._bridging_box_wall_width \
-            = float(self._preferences.getValue("calibrationshapesreborn/bridging_box_wall_width"))
-        self._bridging_box_roof_height \
-            = float(self._preferences.getValue("calibrationshapesreborn/bridging_box_roof_height"))
+        self._bridging_box_width = int(self._preferences.getValue \
+            ("calibrationshapesreborn/bridging_box_width"))
+        self._bridging_box_depth = int(self._preferences.getValue \
+            ("calibrationshapesreborn/bridging_box_depth"))
+        self._bridging_box_height = int(self._preferences.getValue \
+            ("calibrationshapesreborn/bridging_box_height"))
+        self._bridging_box_wall_width = float(self._preferences.getValue \
+            ("calibrationshapesreborn/bridging_box_wall_width"))
+        self._bridging_box_roof_height = float(self._preferences.getValue \
+            ("calibrationshapesreborn/bridging_box_roof_height"))
+
+        self._bridging_tube_outer_diameter = float(self._preferences.getValue \
+            ("calibrationshapesreborn/bridging_tube_outer_diameter"))
+        self._bridging_tube_inner_diameter = float(self._preferences.getValue \
+            ("calibrationshapesreborn/bridging_tube_inner_diameter"))
+        self._bridging_tube_height = int(self._preferences.getValue \
+            ("calibrationshapesreborn/bridging_tube_height"))
+        self._bridging_tube_roof_height = float(self._preferences.getValue \
+            ("calibrationshapesreborn/bridging_tube_roof_height"))
             
-        self._bridging_tube_outer_diameter \
-            = float(self._preferences.getValue("calibrationshapesreborn/bridging_tube_outer_diameter"))
-        self._bridging_tube_inner_diameter \
-            = float(self._preferences.getValue("calibrationshapesreborn/bridging_tube_inner_diameter"))
-        self._bridging_tube_height \
-            = int(self._preferences.getValue("calibrationshapesreborn/bridging_tube_height"))
-        self._bridging_tube_roof_height \
-            = float(self._preferences.getValue("calibrationshapesreborn/bridging_tube_roof_height"))
-            
-        self._bridging_triangle_base_width \
-            = int(self._preferences.getValue("calibrationshapesreborn/bridging_triangle_base_width"))
-        self._bridging_triangle_base_depth \
-            = int(self._preferences.getValue("calibrationshapesreborn/bridging_triangle_base_depth"))
-        self._bridging_triangle_height \
-            = int(self._preferences.getValue("calibrationshapesreborn/bridging_triangle_height"))
-        self._bridging_triangle_wall_width \
-            = float(self._preferences.getValue("calibrationshapesreborn/bridging_triangle_wall_width"))
-        self._bridging_triangle_roof_height \
-            = float(self._preferences.getValue("calibrationshapesreborn/bridging_triangle_roof_height"))
+        self._bridging_triangle_base_width = int(self._preferences.getValue \
+            ("calibrationshapesreborn/bridging_triangle_base_width"))
+        self._bridging_triangle_base_depth = int(self._preferences.getValue \
+            ("calibrationshapesreborn/bridging_triangle_base_depth"))
+        self._bridging_triangle_height = int(self._preferences.getValue \
+            ("calibrationshapesreborn/bridging_triangle_height"))
+        self._bridging_triangle_wall_width = float(self._preferences.getValue \
+            ("calibrationshapesreborn/bridging_triangle_wall_width"))
+        self._bridging_triangle_roof_height = float(self._preferences.getValue \
+            ("calibrationshapesreborn/bridging_triangle_roof_height"))
 
         self._settings_popup = None
         
@@ -161,6 +162,13 @@ class CalibrationShapesReborn(QObject, Extension):
         self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a sphere"), self.addSphere)
         self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a tube"), self.addTube)
         self.addMenuItem("   ", lambda: None)
+        self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a Custom Bridging Hollow Box"), \
+            self.add_bridging_box_dialog)
+        self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a Custom Bridging Tube"), \
+            self.add_bridging_tube_dialog)
+        self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a Custom Bridging Triangle"), \
+            self.add_bridging_triangle_dialog)
+        self.addMenuItem("    ", lambda: None)
         self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a Calibration Cube"), self.addCalibrationCube)
         self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a Layer Adhesion Test"), self.addLayerAdhesion)
         self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a Retract Test"), self.addRetractTest)
@@ -183,17 +191,10 @@ class CalibrationShapesReborn(QObject, Extension):
         self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a Bed Level Calibration"), self.addBedLevelCalibration)
         self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a Backlash Test"), self.addBacklashTest)
         self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a Linear/Pressure Adv Tower"), self.addPressureAdvTower)
-        self.addMenuItem("    ", lambda: None)
+        self.addMenuItem("     ", lambda: None)
         self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a Cube bi-color"), self.addCubeBiColor)
         self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a Bi-Color Calibration Cube"), self.addHollowCalibrationCube)
         self.addMenuItem(catalog.i18nc("@item:inmenu", "Add an Extruder Offset Calibration Part"), self.addExtruderOffsetCalibration)        
-        self.addMenuItem("     ", lambda: None)
-        self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a Custom Bridging Hollow Box"), \
-            self.add_bridging_box_dialog)
-        self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a Custom Bridging Tube"), \
-            self.add_bridging_tube_dialog)
-        self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a Custom Bridging Triangle"), \
-            self.add_bridging_triangle_dialog)
         self.addMenuItem("      ", lambda: None)
         self.addMenuItem(catalog.i18nc("@item:inmenu", "Set default size"), self.showSettingsPopup)
         
@@ -526,24 +527,6 @@ class CalibrationShapesReborn(QObject, Extension):
         # addShape
         self._addShape(mesh_name,self._toMeshData(mesh), **kwargs)
  
-    # Source code from MeshTools Plugin 
-    # Copyright (c) 2020 Aldo Hoeben / fieldOfView
-    def _getAllSelectedNodes(self) -> list[SceneNode]:
-        selection = Selection.getAllSelectedObjects()[:]
-        if selection:
-            deep_selection = []  # type: list[SceneNode]
-            for selected_node in selection:
-                if selected_node.hasChildren():
-                    deep_selection = deep_selection + selected_node.getAllChildren()
-                if selected_node.getMeshData() is not None:
-                    deep_selection.append(selected_node)
-            if deep_selection:
-                return deep_selection
-
-        Message(catalog.i18nc("@info:status", "Please select one or more models first"))
-
-        return []
-                       
     def addCalibrationCube(self) -> None:
         self._registerShapeStl("CalibrationCube")
 
@@ -617,12 +600,12 @@ class CalibrationShapesReborn(QObject, Extension):
         self._registerShapeStl("CalibrationMultiExtruder1", "nozzle-to-nozzle-xy-offset-calibration-pattern-b.stl", ext_pos=2)
 
     #-----------------------------
-    #   Standard Geometry  
-    #-----------------------------    
+    #   Standard Geometry
+    #-----------------------------
     # Origin, xaxis, yaxis, zaxis = [0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]
     # S = trimesh.transformations.scale_matrix(20, origin)
     # xaxis = [1, 0, 0]
-    # Rx = trimesh.transformations.rotation_matrix(math.radians(90), xaxis)    
+    # Rx = trimesh.transformations.rotation_matrix(math.radians(90), xaxis)
     def addCube(self) -> None:
         z_transform = trimesh.transformations.translation_matrix([0, 0, self._shape_size*0.5])
         self._addShape("Cube",self._toMeshData(trimesh.creation.box(extents = [self._shape_size, self._shape_size, self._shape_size], transform = z_transform )))
@@ -637,7 +620,7 @@ class CalibrationShapesReborn(QObject, Extension):
         mesh.apply_transform(trimesh.transformations.translation_matrix([0, 0, self._shape_size*0.5]))
         self._addShape("Tube",self._toMeshData(mesh))
         
-    # Sphere are not very usefull but I leave it for the moment    
+    # Sphere are not very useful but I leave it for the moment
     def addSphere(self) -> None:
         # subdivisions (int) – How many times to subdivide the mesh. Note that the number of faces will grow as function of 4 ** subdivisions, so you probably want to keep this under ~5
         mesh = trimesh.creation.icosphere(subdivisions=4,radius = self._shape_size / 2,)
@@ -655,16 +638,7 @@ class CalibrationShapesReborn(QObject, Extension):
         depth = self._bridging_box_depth
         wall_width = self._bridging_box_wall_width
         roof_height = self._bridging_box_roof_height
-        """up_half_height_outer = trimesh.transformations.translation_matrix(
-            [0,0,height/2])
-        outer_box = trimesh.creation.box(
-            extents = [width, depth, height], transform=up_half_height_outer)
-        up_half_height_inner = trimesh.transformations.translation_matrix(
-            [0,0,(height-roof_height)/2])
-        inner_box = trimesh.creation.box(
-            extents = [width-(wall_width*2), depth-(wall_width*2),
-                       height-roof_height], transform=up_half_height_inner)
-        bridging_box = trimesh.boolean.difference([outer_box, inner_box])"""
+        
         bridging_box_mesh_data = self.generate_capped_cuboid(width, depth, wall_width, height, roof_height)
         bridging_box = self._toTriMesh(bridging_box_mesh_data)
         
@@ -702,7 +676,7 @@ class CalibrationShapesReborn(QObject, Extension):
             mesh.addQuad(inner_vertices[(i+1)%4], inner_vertices[i], inner_vertices[i+4], inner_vertices[(i+1)%4 + 4])
         
         # Cap top
-        mesh.addQuad(outer_vertices[4], outer_vertices[5], outer_vertices[6], outer_vertices[7])
+        mesh.addQuad(outer_vertices[7], outer_vertices[6], outer_vertices[5], outer_vertices[4])
         
         # Bottom cap inside
         mesh.addQuad(inner_vertices[4], inner_vertices[5], inner_vertices[6], inner_vertices[7])
@@ -717,23 +691,10 @@ class CalibrationShapesReborn(QObject, Extension):
     def make_custom_bridging_tube(self) -> None:
         """Function that actually creates a tube with a roof."""
         outer_diameter = self._bridging_tube_outer_diameter
-        outer_radius = outer_diameter / 2
         inner_diameter = self._bridging_tube_inner_diameter
-        inner_radius = inner_diameter / 2
         height = self._bridging_tube_height
         roof_height = self._bridging_tube_roof_height
         
-        #up_half_height_outer = trimesh.transformations.translation_matrix(
-            #[0,0,height/2])
-        #outer_cylinder = trimesh.creation.cylinder(
-            #radius = outer_radius, height = height,
-            #sections = 90, transform=up_half_height_outer)
-        #up_half_height_inner = trimesh.transformations.translation_matrix(
-            #[0,0,(height-roof_height)/2])
-        #inner_cylinder = trimesh.creation.cylinder(
-            #radius = inner_radius, height = height-roof_height,
-            #sections = 90, transform=up_half_height_inner)
-        #bridging_tube = trimesh.boolean.difference([outer_cylinder, inner_cylinder])
         bridging_tube_mesh_data = self.generate_capped_tube(outer_diameter, inner_diameter, height, roof_height)
         bridging_tube = self._toTriMesh(bridging_tube_mesh_data)
         # For whatever reason it lacks colour as a MeshData and I get exceptions trying to calculate the normals.
@@ -803,138 +764,9 @@ class CalibrationShapesReborn(QObject, Extension):
             
             # Bottom cap base (triangulated to center base)
             mesh.addFace(v5_next, v5, center_cap_base)
-            
-    
-        
+
         return mesh.build()
-        
-        
-    def create_bridging_tube_slashee(self, outer_radius, inner_radius, total_height, roof_height, segments):
-        num_segments = int(360 / segments)
-        angle_increment_radians = math.radians(segments)
-        
-    def create_capped_hollow_tube(self, outer_radius, inner_radius, height, cap_height, segments=32):
-        """
-        Creates a hollow tube mesh with an annulus bottom, side faces, and a capped top.
 
-        Args:
-            outer_radius: The outer radius of the tube.
-            inner_radius: The inner radius of the tube.
-            height: The height of the tube's side walls.
-            cap_height: The height of the cap on top of the tube.
-            segments: The number of segments to use for the tube.
-
-        Returns:
-            A UM.Mesh.MeshBuilder object representing the capped hollow tube.
-        """
-
-        builder = MeshBuilder()
-
-        # Generate vertices
-        vertices = []
-        centre_top = Vector(0,height + cap_height, 0)
-        
-        for i in range(segments, 2):
-            l_angle = 2 * math.pi * i / segments
-            xl_outer = outer_radius * math.cos(l_angle)
-            zl_outer = outer_radius * math.sin(l_angle)
-            xl_inner = inner_radius * math.cos(l_angle)
-            zl_inner = inner_radius * math.sin(l_angle)
-
-            #vertices.append(Vector(x_outer, 0, z_outer))  # Bottom outer
-            #vertices.append(Vector(x_inner, 0, z_inner))  # Bottom inner
-            #vertices.append(Vector(x_outer, height + cap_height, z_outer)) # Top outer (with cap height)
-            #vertices.append(Vector(x_inner, height, z_inner)) # Top inner
-            outer_bl = [xl_outer, 0, zl_outer]
-            inner_bl = [xl_inner, 0, zl_inner]
-            outer_tl = [xl_outer, height + cap_height, zl_outer]
-            inner_tl = [xl_inner, height, zl_inner]
-            
-            r_angle = 2 * math.pi * (i + 1) / (segments)
-            xr_outer = outer_radius * math.cos(r_angle)
-            zr_outer = outer_radius * math.sin(r_angle)
-            xr_inner = inner_radius * math.cos(r_angle)
-            zr_inner = inner_radius * math.sin(r_angle)
-            
-            outer_br = [xr_outer, 0, zr_outer]
-            inner_br = [xr_inner, 0, zr_inner]
-            outer_tr = [xr_outer, height + cap_height, zr_outer]
-            inner_tr = [xr_inner, height, zr_inner]
-            
-            # Generate side wall faces
-            builder.addQuad(outer_bl, outer_br, outer_tr, outer_tl)
-            builder.addQuad(inner_bl, inner_tl, inner_tr, inner_br)
-            
-            # Bottom faces
-            builder.addQuad(outer_bl, outer_br, inner_br, inner_bl)
-            
-            # Top face
-            builder.addFace(outer_tl, outer_tr, centre_top)
-            
-        # Generate side faces (walls)
-        """for i in range(segments):
-            v0 = vertices[i * 4]
-            v1 = vertices[(i * 4 + 4) % (segments * 4)]
-            v2 = vertices[i * 4 + 2]
-            v3 = vertices[(i * 4 + 6) % (segments * 4)]
-            mesh_builder.addQuad(v0, v2, v1, v3)
-
-        # Generate top cap faces (cylinder)
-        for i in range(segments):
-            v0 = vertices[i * 4 + 2]
-            v1 = vertices[(i * 4 + 6) % (segments * 4)]
-            v2 = vertices[i * 4 + 3]
-            v3 = vertices[(i * 4 + 7) % (segments * 4)]
-            builder.addQuad(v0, v1, v2, v3)
-
-        # Generate bottom cap faces (at height)
-        for i in range(segments):
-            v0 = vertices[i * 4 + 3]
-            v1 = vertices[(i * 4 + 7) % (segments * 4)]
-            v2 = vertices[i * 4 + 1]
-            v3 = vertices[(i * 4 + 5) % (segments * 4)]
-            builder.addQuad(v0, v1, v2, v3)
-
-        # Generate bottom annulus faces
-        for i in range(segments):
-            v0 = vertices[i * 4]
-            v1 = vertices[(i * 4 + 4) % (segments * 4)]
-            v2 = vertices[i * 4 + 1]
-            v3 = vertices[(i * 4 + 5) % (segments * 4)]
-            builder.addQuad(v0, v1, v2, v3)"""
-
-        #builder.calculateNormals()
-        return builder.build()
-        
-    def _calcualte_inner_triangle(self, width, depth, wall):
-        """
-        Calculates the dimensions and translation for an inner triangle
-        with consistent wall thickness within an outer right-angled triangle.
-        Translation assumes 90° corner is in the bottom left.
-
-        Args:
-            width: Base of the outer triangle.
-            depth: Depth of the outer triangle.
-            wall: Wall thickness.
-
-        Returns:
-            A tuple containing:
-                - inner_width: Width of the inner triangle.
-                - inner_depth: Depth of the inner triangle.
-                - translation: Translation vector for the inner triangle (x, y).
-        """
-        # Calculate hypotenuse length
-        hypotenuse = math.sqrt(width**2 + depth**2)
-
-        # Calculate inner triangle dimensions
-        inner_width = width - (2 * wall + wall * (width / hypotenuse))
-        inner_depth = depth - (2 * wall + wall * (depth / hypotenuse))
-
-        # Calculate translation
-        translation = (wall, wall)
-
-        return inner_width, inner_depth, translation
-        
     @pyqtSlot()
     def make_custom_bridging_triangle(self) -> None:
         """Function that creates a hollow triangular prism with a roof."""
@@ -944,31 +776,9 @@ class CalibrationShapesReborn(QObject, Extension):
         wall_width = self._bridging_triangle_wall_width
         roof_height = self._bridging_triangle_roof_height
 
-        #outer_vertices = [(0,0),(base,0),(base, base)]
-        #outer_polygon = Polygon(outer_vertices)
-        #outer_mesh = trimesh.creation.extrude_polygon(outer_polygon, height)
-        #outer_mesh = self.right_triangular_prism(width, depth, height)
-        #outer_mesh = MeshBuilder()
-        #outer_mesh_points = [(0,0), (base_width, 0), (base_width, base_depth)]
-        #outer_mesh.addConvexPolygonExtrusion(outer_mesh_points, 0, height)
-
-        #inner_vertices = [(wall_width, wall_width),(base-wall_width, wall_width),
-        #                  (base-wall_width, base-wall_width)]
-        #inner_polygon = Polygon(inner_vertices)
-        #inner_mesh = trimesh.creation.extrude_polygon(inner_polygon, height-roof_height)
-        
-        #inner_width, inner_depth, translation = self._calcualte_inner_triangle(width, depth, wall_width)
-        #log("d", f"inner_width = {inner_width}, inner_depth = {inner_depth}, translation = {translation}")
-                
-        #inner_mesh = self.right_triangular_prism(round(inner_width,2), round(inner_depth,2), height-roof_height)
-        #inner_mesh.apply_translation([(width) - wall_width, wall_width, 0])
-
-
-        #bridging_triangle = trimesh.boolean.difference([outer_mesh, inner_mesh])
-        #log("d", f"bridging_triangle: {bridging_triangle}")
-        #bridging_triangle.apply_translation([-width/2,-depth/2,0])
         bridging_triangle_mesh_data = self.generate_capped_triangle(width, depth, wall_width, height, roof_height)
         bridging_triangle = self._toTriMesh(bridging_triangle_mesh_data)
+        bridging_triangle.apply_translation([-width/2, -depth/2, 0])
         self._addShape("Bridging Triangle",self._toMeshData(bridging_triangle))
         
     def generate_capped_triangle(self, base, height, wall_width, total_height, cap_thickness):
@@ -1144,127 +954,7 @@ class CalibrationShapesReborn(QObject, Extension):
         mesh.addQuad(C_in, B_in, B, C)  # edge CB
 
         return mesh.build()
-    
-    def generate_capped_triangle_close(base, height, wall_width, total_height, cap_thickness):
-        mesh = MeshBuilder()
-        cap_height = total_height - cap_thickness
 
-        # Outer triangle in CCW order:
-        #   B = (0,0), A = (base,0), C = (base,height)
-        #   90° at A (bottom right)
-        B = Vector(0, 0, 0)
-        A = Vector(base, 0, 0)
-        C = Vector(base, height, 0)
-
-        B_top = Vector(0, 0, total_height)
-        A_top = Vector(base, 0, total_height)
-        C_top = Vector(base, height, total_height)
-
-        # Edge vectors (in CCW order):
-        #   BA: (base,0)
-        #   AC: (0,height)
-        #   CB: (0-base,0-height) = (-base, -height)
-        # Left (inward) normals:
-        n_BA = Vector(0, 1, 0)      # for BA
-        n_AC = Vector(-1, 0, 0)     # for AC
-        d = math.hypot(base, height)
-        # The correct left normal for CB is ( +height, -base ), normalized:
-        n_CB = Vector(height / d, -base / d, 0)
-
-        # Intersection math for each inner vertex:
-        # 1) Inner B
-        #    B + n_BA*wall_width => (0, wall_width)
-        #    B + n_CB*wall_width => ( height*wall_width/d, -base*wall_width/d )
-        #    Solve for intersection with line along direction (-base, -height).
-        #    We want the y to match (i.e. = wall_width).
-        t_B = ((B.y + n_CB.y*wall_width) - wall_width) / (-height)  # note sign
-        B_in_x = (B.x + n_CB.x*wall_width) - t_B * base
-        B_in = Vector(B_in_x, wall_width, 0)
-
-        # 2) Inner A
-        #    A + n_BA*wall_width => (base, wall_width)
-        #    A + n_AC*wall_width => (base - wall_width, 0)
-        #    Intersection => (base - wall_width, wall_width)
-        A_in = Vector(base - wall_width, wall_width, 0)
-
-        # 3) Inner C
-        #    C + n_AC*wall_width => (base - wall_width, height)
-        #    C + n_CB*wall_width => (base + height*wall_width/d, height - base*wall_width/d)
-        #    The first is vertical x = (base - wall_width).
-        #    We param the second along direction (-base, -height).
-        x_target = base - wall_width
-        start_x = C.x + n_CB.x*wall_width
-        start_y = C.y + n_CB.y*wall_width
-        # Solve (start_x + t*(-base) = x_target) => t = (x_target - start_x) / -base
-        t_C = (x_target - start_x) / (-base)
-        C_in_y = start_y + t_C * (-height)
-        C_in = Vector(x_target, C_in_y, 0)
-
-        # Inner top (cap base) = same XY, z = cap_height
-        B_in_top = Vector(B_in.x, B_in.y, cap_height)
-        A_in_top = Vector(A_in.x, A_in.y, cap_height)
-        C_in_top = Vector(C_in.x, C_in.y, cap_height)
-
-        # Add vertices
-        vertices = [
-            B, A, C,
-            B_top, A_top, C_top,
-            B_in, A_in, C_in,
-            B_in_top, A_in_top, C_in_top
-        ]
-        for v in vertices:
-            mesh.addVertex(v.x, v.y, v.z)
-
-        # Outer walls
-        mesh.addQuad(B, A, A_top, B_top)
-        mesh.addQuad(A, C, C_top, A_top)
-        mesh.addQuad(C, B, B_top, C_top)
-
-        # Inner walls (reverse winding to keep normals outward)
-        mesh.addQuad(A_in, B_in, B_in_top, A_in_top)
-        mesh.addQuad(C_in, A_in, A_in_top, C_in_top)
-        mesh.addQuad(B_in, C_in, C_in_top, B_in_top)
-
-        # Outer cap (top) as a single triangle
-        mesh.addFace(B_top, A_top, C_top)
-        # Inner cap (bottom of the cap) as a single triangle
-        mesh.addFace(B_in_top, C_in_top, A_in_top)
-
-        # Bottom rim
-        mesh.addQuad(B_in, A_in, A, B)
-        mesh.addQuad(A_in, C_in, C, A)
-        mesh.addQuad(C_in, B_in, B, C)
-
-        return mesh
-
-
-    def right_triangular_prism(self, base_width, base_depth, height):
-        """Generates a right angle triangular prism by manually specifying
-        verts/faces because Cura doesn't include the "triangle" library so
-        I can't use trimesh.creation.extrude_polygon"""
-        vertices = numpy.array([
-            [0,0,0],  # Origin (bottom)
-            [base_width,0,0], # Bottom
-            [base_width,base_depth,0], # Bottom
-            [0,0,height], # Top
-            [base_width,0,height], # Top
-            [base_width,base_depth,height] # Top
-        ])
-        
-        faces = numpy.array([
-            [0, 2, 1],  # Base triangle
-            [3, 4, 5],  # Top triangle
-            [0, 4, 1],  # Side face 1 (triangle 1)
-            [0, 3, 4],  # Side face 1 (triangle 2)
-            [1, 5, 2],  # Side face 2 (triangle 1)
-            [1, 4, 5],  # Side face 2 (triangle 2)
-            [2, 3, 0],  # Side face 3 (triangle 1)
-            [2, 5, 3]   # Side face 3 (triangle 2)
-        ])
-        
-        mesh = trimesh.Trimesh(vertices=vertices, faces=faces)
-
-        return mesh
     #----------------------------------------
     # Initial Source code from  fieldOfView
     #----------------------------------------  
@@ -1312,7 +1002,7 @@ class CalibrationShapesReborn(QObject, Extension):
         
     # Initial Source code from  fieldOfView
     # https://github.com/fieldOfView/Cura-SimpleShapes/blob/bac9133a2ddfbf1ca6a3c27aca1cfdd26e847221/SimpleShapes.py#L70
-    def _addShape(self, mesh_name, mesh_data: MeshData, extruder_position = 0 , hole = False , thin = False , mode = "" ) -> None:
+    def _addShape(self, mesh_name, mesh_data: MeshData, extruder_position = 0) -> None:
         application = CuraApplication.getInstance()
         global_stack = application.getGlobalContainerStack()
         if not global_stack:
@@ -1345,31 +1035,6 @@ class CalibrationShapesReborn(QObject, Extension):
         # Logger.log("d", "default_extruder_id= %s", default_extruder_id)
         node.callDecoration("setActiveExtruder", default_extruder_id)
 
-        stack = node.callDecoration("getStack") # created by SettingOverrideDecorator that is automatically added to CuraSceneNode
-        settings = stack.getTop()
-        # Remove All Holes
-        if hole :
-            definition = stack.getSettingDefinition("meshfix_union_all_remove_holes")
-            new_instance = SettingInstance(definition, settings)
-            new_instance.setProperty("value", True)
-            new_instance.resetState()  # Ensure that the state is not seen as a user state.
-            settings.addInstance(new_instance)
-        # Print Thin Walls
-        if thin :
-            definition = stack.getSettingDefinition("fill_outline_gaps")
-            new_instance = SettingInstance(definition, settings)
-            new_instance.setProperty("value", True)
-            new_instance.resetState()  # Ensure that the state is not seen as a user state.
-            settings.addInstance(new_instance)
- 
-        if len(mode) :
-            definition = stack.getSettingDefinition("magic_mesh_surface_mode")
-            new_instance = SettingInstance(definition, settings)
-            new_instance.setProperty("value", mode)
-            new_instance.resetState()  # Ensure that the state is not seen as a user state.
-            settings.addInstance(new_instance)
-            
-            
         active_build_plate = application.getMultiBuildPlateModel().activeBuildPlate
         node.addDecorator(BuildPlateDecorator(active_build_plate))
 
