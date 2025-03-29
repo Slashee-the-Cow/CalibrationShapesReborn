@@ -19,7 +19,7 @@
 #       - Removed errant function call which broke functionality in older 5.x versions.
 # 1.1.0:
 #       - Added custom bridging boxes, tubes and triangles thanks to an audience request (see, I want your ideas!)
-#       - Removed even more dead code.
+#       - Removed even more dead code. Now it'll run imperceptibly faster.
 
 
 import math
@@ -80,7 +80,7 @@ Resources.addSearchPath(
 catalog = i18nCatalog("calibrationshapesreborn")
 
 if catalog.hasTranslationLoaded():
-    Logger.log("i", "Calibration Shapes Reborn Plugin translation loaded!")
+    Logger.log("i", "Calibration Shapes Reborn Plugin translation loaded")
 
 class CalibrationShapesReborn(QObject, Extension):
        
@@ -93,7 +93,7 @@ class CalibrationShapesReborn(QObject, Extension):
         
         self._preferences.addPreference("calibrationshapesreborn/bridging_box_width", 50)
         self._preferences.addPreference("calibrationshapesreborn/bridging_box_depth", 40)
-        self._preferences.addPreference("calibrationshapesreborn/bridging_box_height", 40)
+        self._preferences.addPreference("calibrationshapesreborn/bridging_box_height", 10)
         self._preferences.addPreference("calibrationshapesreborn/bridging_box_wall_width", 3)
         self._preferences.addPreference("calibrationshapesreborn/bridging_box_roof_height", 3)
         
@@ -102,9 +102,9 @@ class CalibrationShapesReborn(QObject, Extension):
         self._preferences.addPreference("calibrationshapesreborn/bridging_tube_height", 10)
         self._preferences.addPreference("calibrationshapesreborn/bridging_tube_roof_height", 2)
         
-        self._preferences.addPreference("calibrationshapesreborn/bridging_triangle_base_width", 40)
+        self._preferences.addPreference("calibrationshapesreborn/bridging_triangle_base_width", 50)
         self._preferences.addPreference("calibrationshapesreborn/bridging_triangle_base_depth", 50)
-        self._preferences.addPreference("calibrationshapesreborn/bridging_triangle_height", 40)
+        self._preferences.addPreference("calibrationshapesreborn/bridging_triangle_height", 10)
         self._preferences.addPreference("calibrationshapesreborn/bridging_triangle_wall_width", 3)
         self._preferences.addPreference("calibrationshapesreborn/bridging_triangle_roof_height", 1)
 
@@ -153,14 +153,14 @@ class CalibrationShapesReborn(QObject, Extension):
         self._bridging_box_qml = os.path.abspath(os.path.join(os.path.dirname(__file__), "qml", "customBridgingBox.qml"))
         self._bridging_tube_qml = os.path.abspath(os.path.join(os.path.dirname(__file__), "qml", "customBridgingTube.qml"))
         self._bridging_triangle_qml = os.path.abspath(os.path.join(os.path.dirname(__file__), "qml", "customBridgingTriangle.qml"))
-        
+
         self._controller = CuraApplication.getInstance().getController()
-        
+
         self.setMenuName(catalog.i18nc("@item:inmenu", "Calibration Shapes"))
-        self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a cube"), self.addCube)
-        self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a cylinder"), self.addCylinder)
-        self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a sphere"), self.addSphere)
-        self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a tube"), self.addTube)
+        self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a cube"), self._add_cube)
+        self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a cylinder"), self._add_cylinder)
+        self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a sphere"), self._add_sphere)
+        self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a tube"), self._add_tube)
         self.addMenuItem("   ", lambda: None)
         self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a Custom Bridging Hollow Box"), \
             self.add_bridging_box_dialog)
@@ -169,32 +169,32 @@ class CalibrationShapesReborn(QObject, Extension):
         self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a Custom Bridging Triangle"), \
             self.add_bridging_triangle_dialog)
         self.addMenuItem("    ", lambda: None)
-        self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a Calibration Cube"), self.addCalibrationCube)
-        self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a Layer Adhesion Test"), self.addLayerAdhesion)
-        self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a Retract Test"), self.addRetractTest)
-        self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a XY Calibration Test"), self.addXYCalibration)
-        self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a Dimensional Accuracy Test"), self.addDimensionalTest)
-        self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a Tolerance Test"), self.addTolerance)
-        self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a Hole Test"), self.addHoleTest)
+        self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a Calibration Cube"), self._add_calibration_cube)
+        self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a Layer Adhesion Test"), self._add_layer_adhesion)
+        self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a Retract Test"), self._add_retract_test)
+        self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a XY Calibration Test"), self._add_XY_calibration)
+        self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a Dimensional Accuracy Test"), self._add_dimensional_test)
+        self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a Tolerance Test"), self._add_tolerance)
+        self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a Hole Test"), self._add_hole_test)
         
         # self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a Junction Deviation Tower"), self.addJunctionDeviationTower)
-        self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a Bridge Test"), self.addBridgeTest)
-        self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a Thin Wall Test"), self.addThinWall)
+        self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a Bridge Test"), self._add_bridge_test)
+        self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a Thin Wall Test"), self._add_thin_wall)
         # self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a Thin Wall Test Cura 5.0"), self.addThinWall2)
-        self.addMenuItem(catalog.i18nc("@item:inmenu", "Add an Overhang Test"), self.addOverhangTest)
-        self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a Flow Test"), self.addFlowTest)
-        
-        self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a Support Test"), self.addSupportTest)
-        self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a Lithophane Test"), self.addLithophaneTest)
+        self.addMenuItem(catalog.i18nc("@item:inmenu", "Add an Overhang Test"), self._add_overhang_test)
+        self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a Flow Test"), self._add_flow_test)
+
+        self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a Support Test"), self._add_support_test)
+        self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a Lithophane Test"), self._add_lithophane_test)
         
         # self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a MultiCube Calibration"), self.addMultiCube)
-        self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a Bed Level Calibration"), self.addBedLevelCalibration)
-        self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a Backlash Test"), self.addBacklashTest)
-        self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a Linear/Pressure Adv Tower"), self.addPressureAdvTower)
+        self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a Bed Level Calibration"), self._add_bed_level_calibration)
+        self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a Backlash Test"), self._add_backlash_test)
+        self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a Linear/Pressure Advance Tower"), self._add_pressure_advance_tower)
         self.addMenuItem("     ", lambda: None)
-        self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a Cube bi-color"), self.addCubeBiColor)
-        self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a Bi-Color Calibration Cube"), self.addHollowCalibrationCube)
-        self.addMenuItem(catalog.i18nc("@item:inmenu", "Add an Extruder Offset Calibration Part"), self.addExtruderOffsetCalibration)        
+        self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a Cube bi-color"), self._add_cube_bi_color)
+        self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a Bi-Color Calibration Cube"), self._add_calibration_cube_bi_color)
+        self.addMenuItem(catalog.i18nc("@item:inmenu", "Add an Extruder Offset Calibration Part"), self._add_extruder_offset_calibration)        
         self.addMenuItem("      ", lambda: None)
         self.addMenuItem(catalog.i18nc("@item:inmenu", "Set default size"), self.showSettingsPopup)
         
@@ -489,7 +489,7 @@ class CalibrationShapesReborn(QObject, Extension):
             createQmlComponent(self._bridging_triangle_qml, context_dict)
             
 
-    def addBedLevelCalibration(self) -> None:
+    def _add_bed_level_calibration(self) -> None:
         # Get the build plate Size
         machine_manager = CuraApplication.getInstance().getMachineManager()
 
@@ -527,75 +527,75 @@ class CalibrationShapesReborn(QObject, Extension):
         # addShape
         self._addShape(mesh_name,self._toMeshData(mesh), **kwargs)
  
-    def addCalibrationCube(self) -> None:
+    def _add_calibration_cube(self) -> None:
         self._registerShapeStl("CalibrationCube")
 
-    def addMultiCube(self) -> None:
-        self._registerShapeStl("MultiCube")
+    #def addMultiCube(self) -> None:
+    #    self._registerShapeStl("MultiCube")
 
-    def addJunctionDeviationTower(self) -> None:
-        self._registerShapeStl("JunctionDeviationTower")
+    #def addJunctionDeviationTower(self) -> None:
+    #    self._registerShapeStl("JunctionDeviationTower")
         
-    def addRetractTest(self) -> None:
+    def _add_retract_test(self) -> None:
         self._registerShapeStl("RetractTest")
 
-    def addLayerAdhesion(self) -> None:
+    def _add_layer_adhesion(self) -> None:
         self._registerShapeStl("LayerAdhesion")    
     
-    def addXYCalibration(self) -> None:
+    def _add_XY_calibration(self) -> None:
         self._registerShapeStl("xy_calibration")
         
-    def addBridgeTest(self) -> None:
+    def _add_bridge_test(self) -> None:
         self._registerShapeStl("BridgeTest")
 
-    def addThinWall(self) -> None:
+    def _add_thin_wall(self) -> None:
         self._registerShapeStl("ThinWall")
  
-    def addThinWall2(self) -> None:
-        self._registerShapeStl("ThinWallRought")
+    #def addThinWall2(self) -> None:
+    #    self._registerShapeStl("ThinWallRought")
 
-    def addBacklashTest(self) -> None:
+    def _add_backlash_test(self) -> None:
         self._registerShapeStl("Backlash")  
   
-    def addOverhangTest(self) -> None:
+    def _add_overhang_test(self) -> None:
         self._registerShapeStl("OverhangTest", "Overhang.stl")
  
-    def addFlowTest(self) -> None:
+    def _add_flow_test(self) -> None:
         self._registerShapeStl("FlowTest", "FlowTest.stl")
         
-    def addHoleTest(self) -> None:
+    def _add_hole_test(self) -> None:
         self._registerShapeStl("FlowTest", "HoleTest.stl")
 
-    def addTolerance(self) -> None:
+    def _add_tolerance(self) -> None:
         self._registerShapeStl("Tolerance")
 
-    def addLithophaneTest(self) -> None:
+    def _add_lithophane_test(self) -> None:
         self._registerShapeStl("Lithophane")
         
     # Dotdash addition 2 - Support test
-    def addSupportTest(self) -> None:
+    def _add_support_test(self) -> None:
         self._registerShapeStl("SupportTest")
 
     # Dimensional Accuracy Test
-    def addDimensionalTest(self) -> None:
+    def _add_dimensional_test(self) -> None:
         self._registerShapeStl("DimensionalAccuracyTest")
         
     # Dotdash addition - for Linear/Pressure advance
-    def addPressureAdvTower(self) -> None:
+    def _add_pressure_advance_tower(self) -> None:
         self._registerShapeStl("PressureAdv", "PressureAdvTower.stl")
 
     #-----------------------------
     #   Dual Extruder 
     #----------------------------- 
-    def addCubeBiColor(self) -> None:
+    def _add_cube_bi_color(self) -> None:
         self._registerShapeStl("CubeBiColorExt1", "CubeBiColorWhite.stl", ext_pos=1)
         self._registerShapeStl("CubeBiColorExt2", "CubeBiColorRed.stl", ext_pos=2)
 
-    def addHollowCalibrationCube(self) -> None:
+    def _add_calibration_cube_bi_color(self) -> None:
         self._registerShapeStl("CubeBiColorExt", "HollowCalibrationCube.stl", ext_pos=1)
         self._registerShapeStl("CubeBiColorInt", "HollowCenterCube.stl", ext_pos=2)
         
-    def addExtruderOffsetCalibration(self) -> None:
+    def _add_extruder_offset_calibration(self) -> None:
         self._registerShapeStl("CalibrationMultiExtruder1", "nozzle-to-nozzle-xy-offset-calibration-pattern-a.stl", ext_pos=1)
         self._registerShapeStl("CalibrationMultiExtruder1", "nozzle-to-nozzle-xy-offset-calibration-pattern-b.stl", ext_pos=2)
 
@@ -606,22 +606,22 @@ class CalibrationShapesReborn(QObject, Extension):
     # S = trimesh.transformations.scale_matrix(20, origin)
     # xaxis = [1, 0, 0]
     # Rx = trimesh.transformations.rotation_matrix(math.radians(90), xaxis)
-    def addCube(self) -> None:
+    def _add_cube(self) -> None:
         z_transform = trimesh.transformations.translation_matrix([0, 0, self._shape_size*0.5])
         self._addShape("Cube",self._toMeshData(trimesh.creation.box(extents = [self._shape_size, self._shape_size, self._shape_size], transform = z_transform )))
         
-    def addCylinder(self) -> None:
+    def _add_cylinder(self) -> None:
         mesh = trimesh.creation.cylinder(radius = self._shape_size / 2, height = self._shape_size, sections=90)
         mesh.apply_transform(trimesh.transformations.translation_matrix([0, 0, self._shape_size*0.5]))
         self._addShape("Cylinder",self._toMeshData(mesh))
 
-    def addTube(self) -> None:
+    def _add_tube(self) -> None:
         mesh = trimesh.creation.annulus(r_min = self._shape_size / 4, r_max = self._shape_size / 2, height = self._shape_size, sections = 90)
         mesh.apply_transform(trimesh.transformations.translation_matrix([0, 0, self._shape_size*0.5]))
         self._addShape("Tube",self._toMeshData(mesh))
         
     # Sphere are not very useful but I leave it for the moment
-    def addSphere(self) -> None:
+    def _add_sphere(self) -> None:
         # subdivisions (int) – How many times to subdivide the mesh. Note that the number of faces will grow as function of 4 ** subdivisions, so you probably want to keep this under ~5
         mesh = trimesh.creation.icosphere(subdivisions=4,radius = self._shape_size / 2,)
         mesh.apply_transform(trimesh.transformations.translation_matrix([0, 0, self._shape_size*0.5]))
@@ -1018,8 +1018,8 @@ class CalibrationShapesReborn(QObject, Extension):
             node.setName(str(mesh_name))
 
         scene = self._controller.getScene()
-        op = AddSceneNodeOperation(node, scene.getRoot())
-        op.push()
+        scene_op = AddSceneNodeOperation(node, scene.getRoot())
+        scene_op.push()
 
         extruder_stack = application.getExtruderManager().getActiveExtruderStacks() 
 

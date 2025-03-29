@@ -76,7 +76,7 @@ UM.Dialog {
         let roof = null
         if (widthValid) {width = parseInt(triangleWidth)}
         if (depthValid) {depth = parseInt(triangleDepth)}
-        if (heightValid) {height = parseInt(triangeHeight)}
+        if (heightValid) {height = parseInt(triangleHeight)}
         if (wallValid) {wall = parseFloat(triangleWallWidth)}
         if (roofValid) {roof = parseFloat(triangleRoofHeight)}
 
