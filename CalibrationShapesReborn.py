@@ -4,8 +4,8 @@
 
 # Version history (Reborn)
 # 1.0.0:    Initial release.
-#       - Rebranded.
-#       - Removed towers and tests that require use of post-processing scripts
+#       - Rebranded, and changed all internal names so they don't conflict with the original if you have them both installed.
+#       - Removed towers and tests that require use of post-processing scripts.
 #           AutoTowers Generator does them so much better and asking the user to add a script is a pain.
 #       - Removed support for Cura versions below 5.0 to get rid of legacy code.
 # 1.0.1:
@@ -20,6 +20,10 @@
 # 1.1.0:
 #       - Added custom bridging boxes, tubes and triangles thanks to an audience request (see, I want your ideas!)
 #       - Removed even more dead code. Now it'll run imperceptibly faster.
+# 1.2.0:
+#       - Added custom sized box, cylinder and tube for those who'd rather not unevenly scale manually (or want to customise their tube's inner diameter).
+#       - Added generating a simple cone.
+#       - Put "..." at the end of menu options that open a dialog. Is that even worth mentioning?
 
 
 import math
@@ -53,9 +57,9 @@ from PyQt6.QtCore import QObject, pyqtProperty, pyqtSignal, pyqtSlot
 
 import trimesh.creation
 
-DEBUG_MODE = False
+DEBUG_MODE: bool = False
 
-def log(level, message):
+def log(level: str, message: str) -> None:
     """Wrapper function for logging messages using Cura's Logger, but with debug mode so as not to spam you."""
     if level == "d" and DEBUG_MODE:
         Logger.log("d", message)
@@ -90,6 +94,17 @@ class CalibrationShapesReborn(QObject, Extension):
         # set the preferences to store the default value
         self._preferences = CuraApplication.getInstance().getPreferences()
         self._preferences.addPreference("calibrationshapesreborn/shapesize", 20)
+
+        self._preferences.addPreference("calibrationshapesreborn/custom_box_width", 40)
+        self._preferences.addPreference("calibrationshapesreborn/custom_box_depth", 30)
+        self._preferences.addPreference("calibrationshapesreborn/custom_box_height", 20)
+        
+        self._preferences.addPreference("calibrationshapesreborn/custom_cylinder_diameter", 15)
+        self._preferences.addPreference("calibrationshapesreborn/custom_cylinder_height", 50)
+        
+        self._preferences.addPreference("calibrationshapesreborn/custom_tube_outer_diameter", 30)
+        self._preferences.addPreference("calibrationshapesreborn/custom_tube_inner_diameter", 25)
+        self._preferences.addPreference("calibrationshapesreborn/custom_tube_height", 20)
         
         self._preferences.addPreference("calibrationshapesreborn/bridging_box_width", 50)
         self._preferences.addPreference("calibrationshapesreborn/bridging_box_depth", 40)
@@ -110,6 +125,25 @@ class CalibrationShapesReborn(QObject, Extension):
 
         self._shape_size = float(self._preferences.getValue \
             ("calibrationshapesreborn/shapesize"))
+        
+        self._custom_box_width = float(self._preferences.getValue \
+            ("calibrationshapesreborn/custom_box_width"))
+        self._custom_box_depth = float(self._preferences.getValue \
+            ("calibrationshapesreborn/custom_box_depth"))
+        self._custom_box_height = float(self._preferences.getValue \
+            ("calibrationshapesreborn/custom_box_height"))
+        
+        self._custom_cylinder_diameter = float(self._preferences.getValue \
+            ("calibrationshapesreborn/custom_cylinder_diameter"))
+        self._custom_cylinder_height = float(self._preferences.getValue \
+            ("calibrationshapesreborn/custom_cylinder_height"))
+        
+        self._custom_tube_outer_diameter = float(self._preferences.getValue \
+            ("calibrationshapesreborn/custom_tube_outer_diameter"))
+        self._custom_tube_inner_diameter = float(self._preferences.getValue \
+            ("calibrationshapesreborn/custom_tube_inner_diameter"))
+        self._custom_tube_height = float(self._preferences.getValue \
+            ("calibrationshapesreborn/custom_tube_height"))
         
         self._bridging_box_width = int(self._preferences.getValue \
             ("calibrationshapesreborn/bridging_box_width"))
@@ -144,12 +178,21 @@ class CalibrationShapesReborn(QObject, Extension):
 
         self._settings_popup = None
         
+        self._custom_box_dialog = None
+        self._custom_cylinder_dialog = None
+        self._custom_tube_dialog = None
+        
         self._bridging_box_dialog = None
         self._bridging_tube_dialog = None
         self._bridging_triangle_dialog = None
         
         # self._settings_qml = os.path.join(os.path.dirname(os.path.abspath(__file__)), "qml", "settings.qml")
         self._settings_qml = os.path.abspath(os.path.join(os.path.dirname(__file__), "qml", "settings.qml"))
+        
+        self._custom_box_qml = os.path.abspath(os.path.join(os.path.dirname(__file__), "qml", "customBox.qml"))
+        self._custom_cylinder_qml = os.path.abspath(os.path.join(os.path.dirname(__file__), "qml", "customCylinder.qml"))
+        self._custom_tube_qml = os.path.abspath(os.path.join(os.path.dirname(__file__), "qml", "customTube.qml"))
+
         self._bridging_box_qml = os.path.abspath(os.path.join(os.path.dirname(__file__), "qml", "customBridgingBox.qml"))
         self._bridging_tube_qml = os.path.abspath(os.path.join(os.path.dirname(__file__), "qml", "customBridgingTube.qml"))
         self._bridging_triangle_qml = os.path.abspath(os.path.join(os.path.dirname(__file__), "qml", "customBridgingTriangle.qml"))
@@ -161,18 +204,26 @@ class CalibrationShapesReborn(QObject, Extension):
         self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a cylinder"), self._add_cylinder)
         self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a sphere"), self._add_sphere)
         self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a tube"), self._add_tube)
+        self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a cone"), self._add_cone)
+        self.addMenuItem("  ", lambda: None)
+        self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a custom cube..."), \
+            self.add_custom_box_dialog)
+        self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a custom cylinder...") , \
+            self.add_custom_cylinder_dialog)
+        self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a custom tube...") , \
+            self.add_custom_tube_dialog)
         self.addMenuItem("   ", lambda: None)
-        self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a Custom Bridging Hollow Box"), \
+        self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a custom Bridging Hollow Box..."), \
             self.add_bridging_box_dialog)
-        self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a Custom Bridging Tube"), \
+        self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a custom Bridging Tube..."), \
             self.add_bridging_tube_dialog)
-        self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a Custom Bridging Triangle"), \
+        self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a custom Bridging Triangle..."), \
             self.add_bridging_triangle_dialog)
         self.addMenuItem("    ", lambda: None)
         self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a Calibration Cube"), self._add_calibration_cube)
         self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a Layer Adhesion Test"), self._add_layer_adhesion)
         self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a Retract Test"), self._add_retract_test)
-        self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a XY Calibration Test"), self._add_XY_calibration)
+        self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a XY Calibration Test"), self._add_xy_calibration)
         self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a Dimensional Accuracy Test"), self._add_dimensional_test)
         self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a Tolerance Test"), self._add_tolerance)
         self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a Hole Test"), self._add_hole_test)
@@ -196,7 +247,7 @@ class CalibrationShapesReborn(QObject, Extension):
         self.addMenuItem(catalog.i18nc("@item:inmenu", "Add a Bi-Color Calibration Cube"), self._add_calibration_cube_bi_color)
         self.addMenuItem(catalog.i18nc("@item:inmenu", "Add an Extruder Offset Calibration Part"), self._add_extruder_offset_calibration)        
         self.addMenuItem("      ", lambda: None)
-        self.addMenuItem(catalog.i18nc("@item:inmenu", "Set default size"), self.showSettingsPopup)
+        self.addMenuItem(catalog.i18nc("@item:inmenu", "Set default size..."), self.showSettingsPopup)
         
     @pyqtSlot(str)
     def logMessage(self, value: str) -> None:
@@ -225,7 +276,181 @@ class CalibrationShapesReborn(QObject, Extension):
     def ShapeSize(self) -> int:
         #Logger.log("d", f"ShapeSize pyqtProperty accessed: {self._shape_size}, cast to {int(self._shape_size)}")
         return int(self._shape_size)
+
+    ### Custom box settings
+    _custom_box_width_changed = pyqtSignal()
+    _custom_box_depth_changed = pyqtSignal()
+    _custom_box_height_changed = pyqtSignal()
     
+    def _set_custom_box_width(self, value: float) -> None:
+        log("d", f"_set_custom_box_width is running with a value of {value}")
+        try:
+            new_value = float(value)
+        except ValueError:
+            log("w", "_set_custom_box_width got passed a non-float")
+            return
+        self._preferences.setValue("calibrationshapesreborn/custom_box_width", new_value)
+        self._custom_box_width = new_value
+        self._custom_box_width_changed.emit()
+
+    @pyqtProperty(float, notify=_custom_box_width_changed, fset=_set_custom_box_width)
+    def custom_box_width(self) -> float:
+        return self._custom_box_width
+
+    def _set_custom_box_depth(self, value: float) -> None:
+        log("d", f"_set_custom_box_depth is running with a value of {value}")
+        try:
+            new_value = float(value)
+        except ValueError:
+            log("w", "_set_custom_box_depth got passed a non-float")
+            return
+        self._preferences.setValue("calibrationshapesreborn/custom_box_depth", new_value)
+        self._custom_box_depth = new_value
+        self._custom_box_depth_changed.emit()
+
+    @pyqtProperty(float, notify=_custom_box_depth_changed, fset=_set_custom_box_depth)
+    def custom_box_depth(self) -> float:
+        return self._custom_box_depth
+
+    def _set_custom_box_height(self, value: float) -> None:
+        try:
+            new_value = float(value)
+        except ValueError:
+            log("w", "_set_custom_box_height got passed a non-float")
+            return
+        self._preferences.setValue("calibrationshapesreborn/custom_box_height", new_value)
+        self._custom_box_height = new_value
+        self._custom_box_height_changed.emit()
+
+    @pyqtProperty(float, notify=_custom_box_height_changed, fset=_set_custom_box_height)
+    def custom_box_height(self) -> float:
+        return self._custom_box_height
+    
+    def add_custom_box_dialog(self) -> None:
+        """Loads the dialog to make a custom box"""
+        if self._custom_box_dialog is None:
+            self._create_custom_box_dialog()
+        self._custom_box_dialog.show()
+
+    def _create_custom_box_dialog(self) -> None:
+        """Creates the custom box dialog if it doesn't already exist"""
+        context_dict = {
+            "manager": self,
+        }
+        self._custom_box_dialog = CuraApplication.getInstance().\
+            createQmlComponent(self._custom_box_qml, context_dict)
+    
+    ### Custom cylinder settings
+    _custom_cylinder_diameter_changed = pyqtSignal()
+    _custom_cylinder_height_changed = pyqtSignal()
+    
+    def _set_custom_cylinder_diameter(self, value: float) -> None:
+        log("d", f"_set_custom_cylinder_diameter is running with a value of {value}")
+        try:
+            new_value = float(value)
+        except ValueError:
+            log("w", "_set_custom_cylinder_diameter got passed a non-float")
+            return
+        self._preferences.setValue("calibrationshapesreborn/custom_cylinder_diameter", new_value)
+        self._custom_cylinder_diameter = new_value
+        self._custom_cylinder_diameter_changed.emit()
+
+    @pyqtProperty(float, notify=_custom_cylinder_diameter_changed, fset=_set_custom_cylinder_diameter)
+    def custom_cylinder_diameter(self) -> float:
+        return self._custom_cylinder_diameter
+
+    def _set_custom_cylinder_height(self, value: float) -> None:
+        try:
+            new_value = float(value)
+        except ValueError:
+            log("w", "_set_custom_cylinder_height got passed a non-float")
+            return
+        self._preferences.setValue("calibrationshapesreborn/custom_cylinder_height", new_value)
+        self._custom_cylinder_height = new_value
+        self._custom_cylinder_height_changed.emit()
+
+    @pyqtProperty(float, notify=_custom_cylinder_height_changed, fset=_set_custom_cylinder_height)
+    def custom_cylinder_height(self) -> float:
+        return self._custom_cylinder_height
+    
+    def add_custom_cylinder_dialog(self) -> None:
+        """Loads the dialog to make a custom cylinder"""
+        if self._custom_cylinder_dialog is None:
+            self._create_custom_cylinder_dialog()
+        self._custom_cylinder_dialog.show()
+
+    def _create_custom_cylinder_dialog(self) -> None:
+        """Creates the custom cylinder dialog if it doesn't already exist"""
+        context_dict = {
+            "manager": self,
+        }
+        self._custom_cylinder_dialog = CuraApplication.getInstance().\
+            createQmlComponent(self._custom_cylinder_qml, context_dict)
+    
+    ### Custom tube settings
+    _custom_tube_outer_diameter_changed = pyqtSignal()
+    _custom_tube_inner_diameter_changed = pyqtSignal()
+    _custom_tube_height_changed = pyqtSignal()
+    
+    def _set_custom_tube_outer_diameter(self, value: float) -> None:
+        log("d", f"_set_custom_tube_outer_diameter is running with a value of {value}")
+        try:
+            new_value = float(value)
+        except ValueError:
+            log("w", "_set_custom_tube_outer_diameter got passed a non-float")
+            return
+        self._preferences.setValue("calibrationshapesreborn/custom_tube_outer_diameter", new_value)
+        self._custom_tube_outer_diameter = new_value
+        self._custom_tube_outer_diameter_changed.emit()
+
+    @pyqtProperty(float, notify=_custom_tube_outer_diameter_changed, fset=_set_custom_tube_outer_diameter)
+    def custom_tube_outer_diameter(self) -> float:
+        return self._custom_tube_outer_diameter
+
+    def _set_custom_tube_inner_diameter(self, value: float) -> None:
+        log("d", f"_set_custom_tube_inner_diameter is running with a value of {value}")
+        try:
+            new_value = float(value)
+        except ValueError:
+            log("w", "_set_custom_tube_inner_diameter got passed a non-float")
+            return
+        self._preferences.setValue("calibrationshapesreborn/custom_tube_inner_diameter", new_value)
+        self._custom_tube_inner_diameter = new_value
+        self._custom_tube_inner_diameter_changed.emit()
+
+    @pyqtProperty(float, notify=_custom_tube_inner_diameter_changed, fset=_set_custom_tube_inner_diameter)
+    def custom_tube_inner_diameter(self) -> float:
+        return self._custom_tube_inner_diameter
+
+    def _set_custom_tube_height(self, value: float) -> None:
+        try:
+            new_value = float(value)
+        except ValueError:
+            log("w", "_set_custom_tube_height got passed a non-float")
+            return
+        self._preferences.setValue("calibrationshapesreborn/custom_tube_height", new_value)
+        self._custom_tube_height = new_value
+        self._custom_tube_height_changed.emit()
+
+    @pyqtProperty(float, notify=_custom_tube_height_changed, fset=_set_custom_tube_height)
+    def custom_tube_height(self) -> float:
+        return self._custom_tube_height
+    
+    def add_custom_tube_dialog(self) -> None:
+        """Loads the dialog to make a custom tube"""
+        if self._custom_tube_dialog is None:
+            self._create_custom_tube_dialog()
+        self._custom_tube_dialog.show()
+
+    def _create_custom_tube_dialog(self) -> None:
+        """Creates the custom tube dialog if it doesn't already exist"""
+        context_dict = {
+            "manager": self,
+        }
+        self._custom_tube_dialog = CuraApplication.getInstance().\
+            createQmlComponent(self._custom_tube_qml, context_dict)
+
+    ### Bridging box settings
     _bridging_box_width_changed = pyqtSignal()
     _bridging_box_depth_changed = pyqtSignal()
     _bridging_box_height_changed = pyqtSignal()
@@ -257,7 +482,7 @@ class CalibrationShapesReborn(QObject, Extension):
         self._preferences.setValue("calibrationshapesreborn/bridging_box_depth", new_value)
         self._bridging_box_depth = new_value
         self._bridging_box_depth_changed.emit()
-        
+
     @pyqtProperty(int, notify=_bridging_box_depth_changed, fset=_set_bridging_box_depth)
     def bridging_box_depth(self) -> int:
         return self._bridging_box_depth
@@ -271,7 +496,7 @@ class CalibrationShapesReborn(QObject, Extension):
         self._preferences.setValue("calibrationshapesreborn/bridging_box_height", new_value)
         self._bridging_box_height = new_value
         self._bridging_box_height_changed.emit()
-        
+
     @pyqtProperty(int, notify=_bridging_box_height_changed, fset=_set_bridging_box_height)
     def bridging_box_height(self) -> int:
         return self._bridging_box_height
@@ -285,7 +510,7 @@ class CalibrationShapesReborn(QObject, Extension):
         self._preferences.setValue("calibrationshapesreborn/bridging_box_wall_width", new_value)
         self._bridging_box_wall_width = new_value
         self._bridging_box_wall_width_changed.emit()
-        
+
     @pyqtProperty(float, notify=_bridging_box_wall_width_changed, fset=_set_bridging_box_wall_width)
     def bridging_box_wall_width(self) -> float:
         return self._bridging_box_wall_width
@@ -303,7 +528,7 @@ class CalibrationShapesReborn(QObject, Extension):
     @pyqtProperty(float, notify=_bridging_box_roof_height_changed, fset=_set_bridging_box_roof_height)
     def bridging_box_roof_height(self) -> float:
         return self._bridging_box_roof_height
-    
+ 
     def add_bridging_box_dialog(self):
         """Loads the dialog to make a custom bridging box"""
         if self._bridging_box_dialog is None:
@@ -318,7 +543,8 @@ class CalibrationShapesReborn(QObject, Extension):
         }
         self._bridging_box_dialog = CuraApplication.getInstance().\
             createQmlComponent(self._bridging_box_qml, context_dict)
-            
+
+    ### Bridging tube settings
     _bridging_tube_outer_diameter_changed = pyqtSignal()
     _bridging_tube_inner_diameter_changed = pyqtSignal()
     _bridging_tube_height_changed = pyqtSignal()
@@ -347,7 +573,7 @@ class CalibrationShapesReborn(QObject, Extension):
         self._preferences.setValue("calibrationshapesreborn/bridging_tube_inner_diameter", new_value)
         self._bridging_tube_inner_diameter = new_value
         self._bridging_tube_inner_diameter_changed.emit()
-        
+
     @pyqtProperty(float, notify=_bridging_tube_inner_diameter_changed, fset=_set_bridging_tube_inner_diameter)
     def bridging_tube_inner_diameter(self) -> int:
         return self._bridging_tube_inner_diameter
@@ -379,7 +605,7 @@ class CalibrationShapesReborn(QObject, Extension):
     @pyqtProperty(float, notify=_bridging_tube_roof_height_changed, fset=_set_bridging_tube_roof_height)
     def bridging_tube_roof_height(self) -> float:
         return self._bridging_tube_roof_height
-    
+
     def add_bridging_tube_dialog(self):
         """Loads the dialog to make a custom bridging tube"""
         if self._bridging_tube_dialog is None:
@@ -394,13 +620,14 @@ class CalibrationShapesReborn(QObject, Extension):
         }
         self._bridging_tube_dialog = CuraApplication.getInstance().\
             createQmlComponent(self._bridging_tube_qml, context_dict)
-            
+
+    ### Bridging triangle settings
     _bridging_triangle_base_width_changed = pyqtSignal()
     _bridging_triangle_base_depth_changed = pyqtSignal()
     _bridging_triangle_height_changed = pyqtSignal()
     _bridging_triangle_wall_width_changed = pyqtSignal()
     _bridging_triangle_roof_height_changed = pyqtSignal()
-    
+
     def _set_bridging_triangle_base_width(self, value: int) -> None:
         log("d", f"_set_bridging_triangle_base_width is running with a value of {value}")
         try:
@@ -411,11 +638,11 @@ class CalibrationShapesReborn(QObject, Extension):
         self._preferences.setValue("calibrationshapesreborn/bridging_triangle_base_width", new_value)
         self._bridging_triangle_base_width = new_value
         self._bridging_triangle_base_width_changed.emit()
-            
+
     @pyqtProperty(int, notify=_bridging_triangle_base_width_changed, fset=_set_bridging_triangle_base_width)
     def bridging_triangle_base_width(self) -> int:
         return self._bridging_triangle_base_width
-    
+
     def _set_bridging_triangle_base_depth(self, value: int) -> None:
         log("d", f"_set_bridging_triangle_base_depth is running with a value of {value}")
         try:
@@ -426,7 +653,7 @@ class CalibrationShapesReborn(QObject, Extension):
         self._preferences.setValue("calibrationshapesreborn/bridging_triangle_base_depth", new_value)
         self._bridging_triangle_base_depth = new_value
         self._bridging_triangle_base_depth_changed.emit()
-            
+
     @pyqtProperty(int, notify=_bridging_triangle_base_depth_changed, fset=_set_bridging_triangle_base_depth)
     def bridging_triangle_base_depth(self) -> int:
         return self._bridging_triangle_base_depth
@@ -454,7 +681,7 @@ class CalibrationShapesReborn(QObject, Extension):
         self._preferences.setValue("calibrationshapesreborn/bridging_triangle_wall_width", new_value)
         self._bridging_triangle_wall_width = new_value
         self._bridging_triangle_wall_width_changed.emit()
-        
+
     @pyqtProperty(float, notify=_bridging_triangle_wall_width_changed, fset=_set_bridging_triangle_wall_width)
     def bridging_triangle_wall_width(self) -> float:
         return self._bridging_triangle_wall_width
@@ -472,7 +699,7 @@ class CalibrationShapesReborn(QObject, Extension):
     @pyqtProperty(float, notify=_bridging_triangle_roof_height_changed, fset=_set_bridging_triangle_roof_height)
     def bridging_triangle_roof_height(self) -> float:
         return self._bridging_triangle_roof_height
-    
+
     def add_bridging_triangle_dialog(self):
         """Loads the dialog to make a custom bridging triangle"""
         if self._bridging_triangle_dialog is None:
@@ -487,7 +714,6 @@ class CalibrationShapesReborn(QObject, Extension):
         }
         self._bridging_triangle_dialog = CuraApplication.getInstance().\
             createQmlComponent(self._bridging_triangle_qml, context_dict)
-            
 
     def _add_bed_level_calibration(self) -> None:
         # Get the build plate Size
@@ -502,10 +728,10 @@ class CalibrationShapesReborn(QObject, Extension):
         else:
             factor_width=int(machine_width/100)
             factor_depth=int(machine_depth/100)
-        
+
         # Logger.log("d", "factor_w= %.1f", factor_w)
         # Logger.log("d", "factor_d= %.1f", factor_d)
-        
+
         model_definition_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models", "ParametricBedLevel.stl")
         mesh = trimesh.load(model_definition_path)
         origin = [0, 0, 0]
@@ -516,17 +742,17 @@ class CalibrationShapesReborn(QObject, Extension):
         mesh.apply_transform(trimesh.transformations.scale_matrix(factor_depth, origin, direction_y))
         # addShape
         self._addShape("BedLevelCalibration",self._toMeshData(mesh))
-            
+
     def _registerShapeStl(self, mesh_name, mesh_filename=None, **kwargs) -> None:
         if mesh_filename is None:
             mesh_filename = mesh_name + ".stl"
-        
+
         model_definition_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models", mesh_filename)
         mesh =  trimesh.load(model_definition_path)
-        
+
         # addShape
         self._addShape(mesh_name,self._toMeshData(mesh), **kwargs)
- 
+
     def _add_calibration_cube(self) -> None:
         self._registerShapeStl("CalibrationCube")
 
@@ -535,34 +761,34 @@ class CalibrationShapesReborn(QObject, Extension):
 
     #def addJunctionDeviationTower(self) -> None:
     #    self._registerShapeStl("JunctionDeviationTower")
-        
+
     def _add_retract_test(self) -> None:
         self._registerShapeStl("RetractTest")
 
     def _add_layer_adhesion(self) -> None:
         self._registerShapeStl("LayerAdhesion")    
-    
-    def _add_XY_calibration(self) -> None:
+
+    def _add_xy_calibration(self) -> None:
         self._registerShapeStl("xy_calibration")
-        
+
     def _add_bridge_test(self) -> None:
         self._registerShapeStl("BridgeTest")
 
     def _add_thin_wall(self) -> None:
         self._registerShapeStl("ThinWall")
- 
+
     #def addThinWall2(self) -> None:
     #    self._registerShapeStl("ThinWallRought")
 
     def _add_backlash_test(self) -> None:
         self._registerShapeStl("Backlash")  
-  
+
     def _add_overhang_test(self) -> None:
         self._registerShapeStl("OverhangTest", "Overhang.stl")
- 
+
     def _add_flow_test(self) -> None:
         self._registerShapeStl("FlowTest", "FlowTest.stl")
-        
+
     def _add_hole_test(self) -> None:
         self._registerShapeStl("FlowTest", "HoleTest.stl")
 
@@ -571,7 +797,7 @@ class CalibrationShapesReborn(QObject, Extension):
 
     def _add_lithophane_test(self) -> None:
         self._registerShapeStl("Lithophane")
-        
+
     # Dotdash addition 2 - Support test
     def _add_support_test(self) -> None:
         self._registerShapeStl("SupportTest")
@@ -579,7 +805,7 @@ class CalibrationShapesReborn(QObject, Extension):
     # Dimensional Accuracy Test
     def _add_dimensional_test(self) -> None:
         self._registerShapeStl("DimensionalAccuracyTest")
-        
+
     # Dotdash addition - for Linear/Pressure advance
     def _add_pressure_advance_tower(self) -> None:
         self._registerShapeStl("PressureAdv", "PressureAdvTower.stl")
@@ -594,42 +820,67 @@ class CalibrationShapesReborn(QObject, Extension):
     def _add_calibration_cube_bi_color(self) -> None:
         self._registerShapeStl("CubeBiColorExt", "HollowCalibrationCube.stl", ext_pos=1)
         self._registerShapeStl("CubeBiColorInt", "HollowCenterCube.stl", ext_pos=2)
-        
+
     def _add_extruder_offset_calibration(self) -> None:
-        self._registerShapeStl("CalibrationMultiExtruder1", "nozzle-to-nozzle-xy-offset-calibration-pattern-a.stl", ext_pos=1)
-        self._registerShapeStl("CalibrationMultiExtruder1", "nozzle-to-nozzle-xy-offset-calibration-pattern-b.stl", ext_pos=2)
+        self._registerShapeStl("CalibrationMultiExtruder1",
+                               "nozzle-to-nozzle-xy-offset-calibration-pattern-a.stl", ext_pos=1)
+        self._registerShapeStl("CalibrationMultiExtruder1",
+                               "nozzle-to-nozzle-xy-offset-calibration-pattern-b.stl", ext_pos=2)
 
     #-----------------------------
     #   Standard Geometry
     #-----------------------------
-    # Origin, xaxis, yaxis, zaxis = [0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]
-    # S = trimesh.transformations.scale_matrix(20, origin)
-    # xaxis = [1, 0, 0]
-    # Rx = trimesh.transformations.rotation_matrix(math.radians(90), xaxis)
     def _add_cube(self) -> None:
-        z_transform = trimesh.transformations.translation_matrix([0, 0, self._shape_size*0.5])
-        self._addShape("Cube",self._toMeshData(trimesh.creation.box(extents = [self._shape_size, self._shape_size, self._shape_size], transform = z_transform )))
-        
+        mesh = trimesh.creation.box(extents = [self._shape_size, self._shape_size, self._shape_size])
+        mesh.apply_transform(trimesh.transformations.translation_matrix([0, 0, self._shape_size*0.5]))
+        self._addShape("Cube", self._toMeshData(mesh))
+
     def _add_cylinder(self) -> None:
         mesh = trimesh.creation.cylinder(radius = self._shape_size / 2, height = self._shape_size, sections=90)
         mesh.apply_transform(trimesh.transformations.translation_matrix([0, 0, self._shape_size*0.5]))
-        self._addShape("Cylinder",self._toMeshData(mesh))
+        self._addShape("Cylinder", self._toMeshData(mesh))
 
     def _add_tube(self) -> None:
         mesh = trimesh.creation.annulus(r_min = self._shape_size / 4, r_max = self._shape_size / 2, height = self._shape_size, sections = 90)
         mesh.apply_transform(trimesh.transformations.translation_matrix([0, 0, self._shape_size*0.5]))
-        self._addShape("Tube",self._toMeshData(mesh))
-        
-    # Sphere are not very useful but I leave it for the moment
+        self._addShape("Tube", self._toMeshData(mesh))
+
     def _add_sphere(self) -> None:
         # subdivisions (int) – How many times to subdivide the mesh. Note that the number of faces will grow as function of 4 ** subdivisions, so you probably want to keep this under ~5
         mesh = trimesh.creation.icosphere(subdivisions=4,radius = self._shape_size / 2,)
         mesh.apply_transform(trimesh.transformations.translation_matrix([0, 0, self._shape_size*0.5]))
-        self._addShape("Sphere",self._toMeshData(mesh))
+        self._addShape("Sphere", self._toMeshData(mesh))
         
-    #---------------
+    def _add_cone(self) -> None:
+        mesh = trimesh.creation.cone(self._shape_size/2, self._shape_size, sections=90)
+        # For some reason the cone seems to start at Z0 even though the docs say Z centred on origin.
+        #mesh.apply_transform(trimesh.transformations.translation_matrix([0, 0, self._shape_size*0.5]))
+        self._addShape("Cone", self._toMeshData(mesh))
+        
+    #------------------
     #  Custom Stuff
-    # --------------
+    # -----------------
+    @pyqtSlot()
+    def make_custom_box(self) -> None:
+        mesh = trimesh.creation.box(extents = [self._custom_box_width, self._custom_box_depth, self._custom_box_height])
+        mesh.apply_transform(trimesh.transformations.translation_matrix([0, 0, self._custom_box_height*0.5]))
+        self._addShape("Custom Box", self._toMeshData(mesh))
+    
+    @pyqtSlot()
+    def make_custom_cylinder(self) -> None:
+        mesh = trimesh.creation.cylinder(radius = self._custom_cylinder_diameter / 2, height = self._custom_cylinder_height, sections=90)
+        mesh.apply_transform(trimesh.transformations.translation_matrix([0, 0, self._custom_cylinder_height*0.5]))
+        self._addShape("Custom Cylinder", self._toMeshData(mesh))
+    
+    @pyqtSlot()
+    def make_custom_tube(self) -> None:
+        mesh = trimesh.creation.annulus(r_min = self._custom_tube_inner_diameter / 2, r_max = self._custom_tube_outer_diameter / 2, height = self._custom_tube_height, sections=90)
+        mesh.apply_transform(trimesh.transformations.translation_matrix([0, 0, self._custom_tube_height*0.5]))
+        self._addShape("Custom Tube", self._toMeshData(mesh))
+    
+    #------------------
+    #  Bridging Stuff
+    # -----------------
     @pyqtSlot()
     def make_custom_bridging_box(self) -> None:
         """Function that actually creates a bridging box."""
@@ -998,7 +1249,7 @@ class CalibrationShapesReborn(QObject, Extension):
 
         mesh_data = MeshData(vertices=vertices, indices=indices, normals=normals)
 
-        return mesh_data        
+        return mesh_data
         
     # Initial Source code from  fieldOfView
     # https://github.com/fieldOfView/Cura-SimpleShapes/blob/bac9133a2ddfbf1ca6a3c27aca1cfdd26e847221/SimpleShapes.py#L70
