@@ -13,3 +13,6 @@ resources/~$CalibrationCalcul.xlsx
 
 # IDE Settings
 .vscode
+
+# WIP/Leftovers
+generate_properties.py
