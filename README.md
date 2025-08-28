@@ -7,16 +7,20 @@ This plugin adds a menu to create some simple shapes to the scene (cube, sphere,
 ### Simple shapes:
 Quickly add basic shapes (cube, sphere, cylinder, tube, cone) to your scene from the menu.  
 The default size for the simple shapes is 20 mm, but can be modified via the *Set default size* menu option.
+### Custom simple shapes:
+Make a box the size *you* want it. Make a cylinder the size *you* want it. Make a tube the size *and inner diameter* **you** want it. Don't settle for boxy defaults!
 ### Custom bridging tests:
 Test your printer's ability to span voids of varying vastness with custom boxes, tubes and right angle triangles.
   - Tip: If you're making a bridging triangle, set *Top/Bottom > Top/Bottom Pattern* to *Lines* and set *Top/Bottom > Top/Bottom Line Directions* to *[0,90]* to test the triangle getting evenly further out each time.
-### Custom simple shapes:
-Make a box the size *you* want it. Make a cylinder the size *you* want it. Make a tube the size *and inner diameter* **you** want it. Don't settle for boxy defaults!
 ### Calibration shapes:
 Given the name, they had to be in here somewhere! Print these models designed to test various aspects of your printer's performance. Information about what they do can be found [in the documentation for the original version of the plugin](https://github.com/5axes/Calibration-Shapes/wiki) - just bear in mind that I've removed a few things if something looks missing (see below for more details).
 
 ---
 ### Changelog:
+#### 1.2.2
+- Custom cylinders and tubes now allow you to set the number of segments (sides). You can even make regular polygons if you set it low enough!
+#### 1.2.1
+- Minor bug fixes.
 #### 1.2.0
 - Added custom boxes, cylinders and tubes. No longer do you need to stretch things in certain directions. Or settle for a fixed inner diameter of tube!
 - Added a cone to the simple shapes.

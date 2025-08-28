@@ -12,11 +12,12 @@ UM.Dialog {
 
     id: customTube
 
-    function validateInt(test, minimum = 0){
+    function validateInt(test, minimum = 0, maximum = Infinity){
         if (test === ""){return false}
         let intTest = parseInt(test)
         if (isNaN(intTest)){return false}
         if (intTest < minimum){return false}
+        if (intTest > maximum){return false}
         return true
     }
 
@@ -41,6 +42,7 @@ UM.Dialog {
         let outerDiameterValid = true
         let innerDiameterValid = true
         let heightValid = true
+        let segmentsValid = true
         if (!validateFloat(tubeOuterDiameter, 0.1)){
             outerDiameterValid = false;
             message += catalog.i18nc("@error:outer_diameter_invalid", "Outer diameter must be 0.1 or higher.<br>");
@@ -54,6 +56,11 @@ UM.Dialog {
         if (!validateFloat(tubeHeight, 0.1)){
             heightValid = false;
             message += catalog.i18nc("@error:height_invalid", "Height must be 0.1 or higher.<br>");
+        }
+
+        if (!validateInt(tubeSegments, 3, 7200)){
+            segmentsValid = false;
+            message += catalog.i18nc("@error:segments_invalid", "Due to limitations in Euclidean geometry and processing power, segments must be between 3 and 7200.<br>")
         }
 
         // Test fields for inter-dependencies
@@ -71,7 +78,7 @@ UM.Dialog {
         }
 
         // Global property which controls "OK" button and ability to accept dialog with enter key
-        inputsValid = (outerDiameterValid && innerDiameterValid && heightValid)
+        inputsValid = (outerDiameterValid && innerDiameterValid && heightValid && segmentsValid)
         // Global property which displays error message (duh)
         error_message = message
 
@@ -79,14 +86,15 @@ UM.Dialog {
         outerDiameter.background.color = getBackgroundColour(outerDiameterValid)
         innerDiameter.background.color = getBackgroundColour(innerDiameterValid)
         totalHeight.background.color = getBackgroundColour(heightValid)
+        segmentsField.background.color = getBackgroundColour(segmentsValid)
     }
 
     property variant catalog: UM.I18nCatalog {name: "calibrationshapresreborn" }
-    /* The first third is an int and the rest are reals. But I have no shortage
-    of validation and never do maths with them here so binding strings is handy. */
+
     property string tubeOuterDiameter: "0"
     property string tubeInnerDiameter: "0"
     property string tubeHeight: "0"
+    property string tubeSegments: "0"
 
     property bool inputsValid: false
     property string error_message: ""
@@ -95,10 +103,11 @@ UM.Dialog {
         tubeOuterDiameter = String(manager.custom_tube_outer_diameter)
         tubeInnerDiameter = String(manager.custom_tube_inner_diameter)
         tubeHeight = String(manager.custom_tube_height)
+        tubeSegments = String(manager.custom_tube_segments)
         Qt.callLater(validateInputs)
     }
 
-    title: catalog.i18nc("@window_title", "Custom Bridging Tube")
+    title: catalog.i18nc("@window_title", "Custom Tube")
     buttonSpacing: UM.Theme.getSize("default_margin").width
     
     minimumWidth: Math.max((mainLayout.Layout.minimumWidth + 3 * UM.Theme.getSize("default_margin").width),
@@ -125,7 +134,7 @@ UM.Dialog {
 
             UM.Label{
                 id: outerDiameterLabel
-                text: catalog.i18nc("custom_custom_tube:outer_diameter", "Outer Diameter")
+                text: catalog.i18nc("custom_tube:outer_diameter", "Outer Diameter")
             }
 
             UM.TextFieldWithUnit{
@@ -147,7 +156,7 @@ UM.Dialog {
 
             UM.Label{
                 id: innerDiameterLabel
-                text: catalog.i18nc("custom_custom_tube:inner_diameter", "Inner Diameter")
+                text: catalog.i18nc("custom_tube:inner_diameter", "Inner Diameter")
             }
 
             UM.TextFieldWithUnit{
@@ -169,7 +178,7 @@ UM.Dialog {
 
             UM.Label{
                 id: totalHeightLabel
-                text: catalog.i18nc("custom_custom_tube:total_height", "Total Height")
+                text: catalog.i18nc("custom_tube:total_height", "Total Height")
             }
 
             UM.TextFieldWithUnit{
@@ -188,6 +197,27 @@ UM.Dialog {
                     Qt.callLater(validateInputs)
                 }
             }
+
+            UM.Label{
+                id: segmentsLabel
+                text: catalog.i18nc("custom_cylinder:segments", "Segments (sides)")
+            }
+
+            UM.TextFieldWithUnit{
+                id: segmentsField
+                Layout.minimumWidth: 75
+                height: UM.Theme.getSize("setting_control").height
+                unit: ""
+                text: tubeSegments
+                validator: IntValidator {
+                    bottom: 3
+                    top: 7200
+                }
+                onTextChanged: {
+                    tubeSegments = text
+                    Qt.callLater(validateInputs)
+                }
+            }
         }
         UM.Label{
             Layout.fillWidth: true
@@ -201,7 +231,7 @@ UM.Dialog {
     rightButtons: [
         Cura.SecondaryButton{
             id: cancelButton
-            text: catalog.i18nc("custom_custom_tube_cancel", "Cancel")
+            text: catalog.i18nc("custom_tube_cancel", "Cancel")
 
             onClicked:{
                 customTube.reject()
@@ -209,7 +239,7 @@ UM.Dialog {
         },
         Cura.PrimaryButton{
             id:okButton
-            text: catalog.i18nc("custom_custom_tube_ok", "OK")
+            text: catalog.i18nc("custom_tube_ok", "OK")
             enabled: customTube.inputsValid
 
             onClicked: {
@@ -227,6 +257,7 @@ UM.Dialog {
         manager.custom_tube_outer_diameter = parseFloat(tubeOuterDiameter)
         manager.custom_tube_inner_diameter = parseFloat(tubeInnerDiameter)
         manager.custom_tube_height = parseFloat(tubeHeight)
+        manager.custom_tube_segments = parseInt(tubeSegments)
 
         manager.make_custom_tube()
         customTube.close()
