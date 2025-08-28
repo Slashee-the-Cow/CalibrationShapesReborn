@@ -12,11 +12,12 @@ UM.Dialog {
 
     id: customCylinder
 
-    function validateInt(test, minimum = 0){
+    function validateInt(test, minimum = 0, maximum = Infinity){
         if (test === ""){return false}
         let intTest = parseInt(test)
         if (isNaN(intTest)){return false}
         if (intTest < minimum){return false}
+        if (intTest > maximum){return false}
         return true
     }
 
@@ -40,6 +41,7 @@ UM.Dialog {
         let message = ""
         let diameterValid = true
         let heightValid = true
+        let segmentsValid = true
         if (!validateFloat(cylinderDiameter, 0.1)){
             diameterValid = false;
             message += catalog.i18nc("@error:diameter_invalid", "Diameter must be 0.1 or higher.<br>");
@@ -49,15 +51,21 @@ UM.Dialog {
             heightValid = false;
             message += catalog.i18nc("@error:height_invalid", "Height must be 0.1 or higher<br>");
         }
+
+        if (!validateInt(cylinderSegments, 3, 7200)){
+            segmentsValid = false;
+            message += catalog.i18nc("@error:segments_invalid", "Due to limitations in Euclidean geometry and processing power, segments must be between 3 and 7200.<br>")
+        }
       
         // Global property which controls "OK" button and ability to accept dialog with enter key
-        inputsValid = (diameterValid && heightValid)
+        inputsValid = (diameterValid && heightValid && segmentsValid)
         // Global property which displays error message (duh)
         error_message = message
 
         // Set background for each box
         diameterField.background.color = getBackgroundColour(diameterValid)
         heightField.background.color = getBackgroundColour(heightValid)
+        segmentsField.background.color = getBackgroundColour(segmentsValid)
     }
 
     property variant catalog: UM.I18nCatalog {name: "calibrationshapresreborn" }
@@ -65,6 +73,7 @@ UM.Dialog {
     of validation and never do maths with them here so binding strings is handy. */
     property string cylinderDiameter: "0"
     property string cylinderHeight: "0"
+    property string cylinderSegments: "0"
 
     property bool inputsValid: false
     property string error_message: ""
@@ -72,6 +81,7 @@ UM.Dialog {
     Component.onCompleted: {
         cylinderDiameter = String(manager.custom_cylinder_diameter)
         cylinderHeight = String(manager.custom_cylinder_height)
+        cylinderSegments = String(manager.custom_cylinder_segments)
         Qt.callLater(validateInputs)
     }
 
@@ -82,7 +92,7 @@ UM.Dialog {
         (okButton.width + cancelButton.width + 4 * UM.Theme.getSize("default_margin").width))
     maximumWidth: minimumWidth
     width: minimumWidth
-    minimumHeight: mainLayout.Layout.minimumHeight + (2 * UM.Theme.getSize("default_margin").height) + okButton.height + UM.Theme.getSize("default_lining").height + 20
+    minimumHeight: mainLayout.Layout.minimumHeight + (3 * UM.Theme.getSize("default_margin").height) + okButton.height + UM.Theme.getSize("default_lining").height + 20
     //minimumHeight: 300 * screenScaleFactor
     maximumHeight: minimumHeight
     height: minimumHeight
@@ -102,7 +112,7 @@ UM.Dialog {
 
             UM.Label{
                 id: diameterLabel
-                text: catalog.i18nc("custom_cylinder:diameter", "Outer Diameter")
+                text: catalog.i18nc("custom_cylinder:diameter", "Diameter")
             }
 
             UM.TextFieldWithUnit{
@@ -140,6 +150,27 @@ UM.Dialog {
                 }
                 onTextChanged: {
                     cylinderHeight = text
+                    Qt.callLater(validateInputs)
+                }
+            }
+
+            UM.Label{
+                id: segmentsLabel
+                text: catalog.i18nc("custom_cylinder:segments", "Segments (sides)")
+            }
+
+            UM.TextFieldWithUnit{
+                id: segmentsField
+                Layout.minimumWidth: 75
+                height: UM.Theme.getSize("setting_control").height
+                unit: ""
+                text: cylinderSegments
+                validator: IntValidator {
+                    bottom: 3
+                    top: 7200
+                }
+                onTextChanged: {
+                    cylinderSegments = text
                     Qt.callLater(validateInputs)
                 }
             }
@@ -181,6 +212,7 @@ UM.Dialog {
 
         manager.custom_cylinder_diameter = parseFloat(cylinderDiameter)
         manager.custom_cylinder_height = parseFloat(cylinderHeight)
+        manager.custom_cylinder_segments = parseInt(cylinderSegments)
 
         manager.make_custom_cylinder()
         customCylinder.close()

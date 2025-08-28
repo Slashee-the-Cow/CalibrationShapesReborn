@@ -3,27 +3,31 @@
 # Reborn edition by Slashee the Cow 2025-
 
 # Version history (Reborn)
-# 1.0.0:    Initial release.
-#       - Rebranded, and changed all internal names so they don't conflict with the original if you have them both installed.
-#       - Removed towers and tests that require use of post-processing scripts.
-#           AutoTowers Generator does them so much better and asking the user to add a script is a pain.
-#       - Removed support for Cura versions below 5.0 to get rid of legacy code.
-# 1.0.1:
-#       - Replaced "default size" settings box with something you wouldn't be afraid to take how to meet your parents for the first time.
-#       - This will have definitely broken the existing translations so they have been removed. If you're happy to help translate this, I'm happier to have you help!
-#       - Removed some more old, dead code.
-#       - Fixed a couple of typos in code that didn't affect functionality but bugged me.
-#       - Fixed a couple of typos in original code that would affect functionality.
-# 1.0.2:
-#       - Removed even more dead code - but now it uses less RAM than before!
-#       - Removed errant function call which broke functionality in older 5.x versions.
-# 1.1.0:
-#       - Added custom bridging boxes, tubes and triangles thanks to an audience request (see, I want your ideas!)
-#       - Removed even more dead code. Now it'll run imperceptibly faster.
-# 1.2.0:
-#       - Added custom sized box, cylinder and tube for those who'd rather not unevenly scale manually (or want to customise their tube's inner diameter).
-#       - Added generating a simple cone.
-#       - Put "..." at the end of menu options that open a dialog. Is that even worth mentioning?
+# v1.0.0:    Initial release.
+#   - Rebranded, and changed all internal names so they don't conflict with the original if you have them both installed.
+#   - Removed towers and tests that require use of post-processing scripts.
+#       AutoTowers Generator does them so much better and asking the user to add a script is a pain.
+#   - Removed support for Cura versions below 5.0 to get rid of legacy code.
+# v1.0.1:
+#   - Replaced "default size" settings box with something you wouldn't be afraid to take how to meet your parents for the first time.
+#   - This will have definitely broken the existing translations so they have been removed. If you're happy to help translate this, I'm happier to have you help!
+#   - Removed some more old, dead code.
+#   - Fixed a couple of typos in code that didn't affect functionality but bugged me.
+#   - Fixed a couple of typos in original code that would affect functionality.
+# v1.0.2:
+#   - Removed even more dead code - but now it uses less RAM than before!
+#   - Removed errant function call which broke functionality in older 5.x versions.
+# v1.1.0:
+#   - Added custom bridging boxes, tubes and triangles thanks to an audience request (see, I want your ideas!)
+#   - Removed even more dead code. Now it'll run imperceptibly faster.
+# v1.2.0:
+#   - Added custom sized box, cylinder and tube for those who'd rather not unevenly scale manually (or want to customise their tube's inner diameter).
+#   - Added generating a simple cone.
+#   - Put "..." at the end of menu options that open a dialog. Is that even worth mentioning?
+# v1.2.1:
+#   - Fixed "typos" which were actually things I forget to change when copy + pasting stuff.
+# v1.2.2:
+#   - Added option for number of segments for custom cylinders and tubes.
 
 
 import math
@@ -51,7 +55,6 @@ from UM.Scene.SceneNodeSettings import SceneNodeSettings
 from UM.Scene.Selection import Selection
 from UM.Settings.SettingInstance import SettingInstance
 from UM.Mesh.MeshBuilder import MeshBuilder
-from UM.Mesh.MeshData import MeshData, calculateNormalsFromIndexedVertices
 
 from PyQt6.QtCore import QObject, pyqtProperty, pyqtSignal, pyqtSlot
 
@@ -101,10 +104,12 @@ class CalibrationShapesReborn(QObject, Extension):
         
         self._preferences.addPreference("calibrationshapesreborn/custom_cylinder_diameter", 15)
         self._preferences.addPreference("calibrationshapesreborn/custom_cylinder_height", 50)
+        self._preferences.addPreference("calibrationshapesreborn/custom_cylinder_segments", 90)
         
         self._preferences.addPreference("calibrationshapesreborn/custom_tube_outer_diameter", 30)
         self._preferences.addPreference("calibrationshapesreborn/custom_tube_inner_diameter", 25)
         self._preferences.addPreference("calibrationshapesreborn/custom_tube_height", 20)
+        self._preferences.addPreference("calibrationshapesreborn/custom_tube_segments", 90)
         
         self._preferences.addPreference("calibrationshapesreborn/bridging_box_width", 50)
         self._preferences.addPreference("calibrationshapesreborn/bridging_box_depth", 40)
@@ -137,6 +142,8 @@ class CalibrationShapesReborn(QObject, Extension):
             ("calibrationshapesreborn/custom_cylinder_diameter"))
         self._custom_cylinder_height = float(self._preferences.getValue \
             ("calibrationshapesreborn/custom_cylinder_height"))
+        self._custom_cylinder_segments = int(self._preferences.getValue \
+            ("calibrationshapesreborn/custom_cylinder_segments"))
         
         self._custom_tube_outer_diameter = float(self._preferences.getValue \
             ("calibrationshapesreborn/custom_tube_outer_diameter"))
@@ -144,6 +151,8 @@ class CalibrationShapesReborn(QObject, Extension):
             ("calibrationshapesreborn/custom_tube_inner_diameter"))
         self._custom_tube_height = float(self._preferences.getValue \
             ("calibrationshapesreborn/custom_tube_height"))
+        self._custom_tube_segments = int(self._preferences.getValue \
+            ("calibrationshapesreborn/custom_tube_segments"))
         
         self._bridging_box_width = int(self._preferences.getValue \
             ("calibrationshapesreborn/bridging_box_width"))
@@ -252,7 +261,7 @@ class CalibrationShapesReborn(QObject, Extension):
     @pyqtSlot(str)
     def logMessage(self, value: str) -> None:
         """Wrapper function so QML can log stuff since its own logging doesn't get into Cura's logs."""
-        log("d", f"StacksOfShapes QML Log: {value}")
+        log("d", f"CalibrationShapesReborn QML Log: {value}")
 
     def showSettingsPopup(self):
         if self._settings_popup is None:
@@ -343,6 +352,7 @@ class CalibrationShapesReborn(QObject, Extension):
     ### Custom cylinder settings
     _custom_cylinder_diameter_changed = pyqtSignal()
     _custom_cylinder_height_changed = pyqtSignal()
+    _custom_cylinder_segments_changed = pyqtSignal()
     
     def _set_custom_cylinder_diameter(self, value: float) -> None:
         log("d", f"_set_custom_cylinder_diameter is running with a value of {value}")
@@ -372,6 +382,20 @@ class CalibrationShapesReborn(QObject, Extension):
     @pyqtProperty(float, notify=_custom_cylinder_height_changed, fset=_set_custom_cylinder_height)
     def custom_cylinder_height(self) -> float:
         return self._custom_cylinder_height
+
+    def _set_custom_cylinder_segments(self, value: int) -> None:
+        try:
+            new_value = int(value)
+        except ValueError:
+            log("w", "_set_custom_cylinder_segments got passed a non-int")
+            return
+        self._preferences.setValue("calibrationshapesreborn/custom_cylinder_segments", new_value)
+        self._custom_cylinder_segments = new_value
+        self._custom_cylinder_segments_changed.emit()
+
+    @pyqtProperty(int, notify=_custom_cylinder_segments_changed, fset=_set_custom_cylinder_segments)
+    def custom_cylinder_segments(self) -> int:
+        return self._custom_cylinder_segments
     
     def add_custom_cylinder_dialog(self) -> None:
         """Loads the dialog to make a custom cylinder"""
@@ -391,6 +415,7 @@ class CalibrationShapesReborn(QObject, Extension):
     _custom_tube_outer_diameter_changed = pyqtSignal()
     _custom_tube_inner_diameter_changed = pyqtSignal()
     _custom_tube_height_changed = pyqtSignal()
+    _custom_tube_segments_changed = pyqtSignal()
     
     def _set_custom_tube_outer_diameter(self, value: float) -> None:
         log("d", f"_set_custom_tube_outer_diameter is running with a value of {value}")
@@ -435,6 +460,20 @@ class CalibrationShapesReborn(QObject, Extension):
     @pyqtProperty(float, notify=_custom_tube_height_changed, fset=_set_custom_tube_height)
     def custom_tube_height(self) -> float:
         return self._custom_tube_height
+
+    def _set_custom_tube_segments(self, value: int) -> None:
+        try:
+            new_value = int(value)
+        except ValueError:
+            log("w", "_set_custom_tube_segments got passed a non-float")
+            return
+        self._preferences.setValue("calibrationshapesreborn/custom_tube_segments", new_value)
+        self._custom_tube_segments = new_value
+        self._custom_tube_segments_changed.emit()
+
+    @pyqtProperty(int, notify=_custom_tube_segments_changed, fset=_set_custom_tube_segments)
+    def custom_tube_segments(self) -> int:
+        return self._custom_tube_segments
     
     def add_custom_tube_dialog(self) -> None:
         """Loads the dialog to make a custom tube"""
@@ -868,13 +907,13 @@ class CalibrationShapesReborn(QObject, Extension):
     
     @pyqtSlot()
     def make_custom_cylinder(self) -> None:
-        mesh = trimesh.creation.cylinder(radius = self._custom_cylinder_diameter / 2, height = self._custom_cylinder_height, sections=90)
+        mesh = trimesh.creation.cylinder(radius = self._custom_cylinder_diameter / 2, height = self._custom_cylinder_height, sections = self._custom_cylinder_segments)
         mesh.apply_transform(trimesh.transformations.translation_matrix([0, 0, self._custom_cylinder_height*0.5]))
         self._addShape("Custom Cylinder", self._toMeshData(mesh))
     
     @pyqtSlot()
     def make_custom_tube(self) -> None:
-        mesh = trimesh.creation.annulus(r_min = self._custom_tube_inner_diameter / 2, r_max = self._custom_tube_outer_diameter / 2, height = self._custom_tube_height, sections=90)
+        mesh = trimesh.creation.annulus(r_min = self._custom_tube_inner_diameter / 2, r_max = self._custom_tube_outer_diameter / 2, height = self._custom_tube_height, sections = self._custom_tube_segments)
         mesh.apply_transform(trimesh.transformations.translation_matrix([0, 0, self._custom_tube_height*0.5]))
         self._addShape("Custom Tube", self._toMeshData(mesh))
     
@@ -940,7 +979,7 @@ class CalibrationShapesReborn(QObject, Extension):
         
     @pyqtSlot()
     def make_custom_bridging_tube(self) -> None:
-        """Function that actually creates a tube with a roof."""
+        """Function that actually creates a tube with a roof. Well, runs it, anyway."""
         outer_diameter = self._bridging_tube_outer_diameter
         inner_diameter = self._bridging_tube_inner_diameter
         height = self._bridging_tube_height
